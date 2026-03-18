@@ -40,6 +40,14 @@ The app opens automatically in your browser. That's it!
 3. **Speak naturally** — the prompter follows your voice in real-time
 4. Use the **speed** and **font size** controls to adjust to your comfort
 
+### Multi-Language Support
+
+SyncPrompt automatically detects and switches between languages as you speak (Korean, English, French, and more). For best results:
+
+- **Select the languages** used in your script from the sidebar
+- **Keep languages on separate lines** — the system detects the language per line and adjusts voice recognition accordingly
+- Mixing two languages on the same line works but is harder for the system to switch
+
 ### Script Formatting
 
 - `---` or `## Chapter Title` → chapter breaks
