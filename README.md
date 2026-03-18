@@ -2,9 +2,15 @@
 
 A browser-based teleprompter with real-time voice synchronization. Your script scrolls automatically as you speak — no foot pedal, no remote, just your voice.
 
-## Setup (Mac)
+## Try It Online
 
-**You don't need to install anything.** Everything you need is already on your Mac.
+**No install needed** — open the app directly in your browser:
+
+👉 **https://gaufredev.github.io/syncprompt/syncprompt.html**
+
+## Local Setup (Mac)
+
+If you want to run it locally (needed for the Notion edition), everything you need is already on your Mac.
 
 ### Step 1 — Download
 
@@ -44,9 +50,9 @@ The app opens automatically in your browser. That's it!
 | Problem | Fix |
 |---|---|
 | "permission denied" when running start.sh | Run `chmod +x start.sh` in Terminal first |
-| Browser doesn't open | Go to **http://localhost:8080/syncprompt.html** manually in Chrome |
+| Browser doesn't open | Go to **http://localhost:8080/syncprompt.html** manually |
 | Mic not working | Click the lock/settings icon in the address bar → allow microphone |
-| Voice sync feels off | Speak closer to the mic, or use Chrome instead of Safari |
+| Voice sync feels off | Speak closer to the mic. On Mac, Safari tends to be more reliable than Chrome |
 | "address already in use" | Another app uses port 8080. Edit `PORT = 8080` in `server.py` to 8081 |
 
 ## Notion Edition
@@ -59,9 +65,11 @@ This version **only works locally** (not from the hosted GitHub Pages link) beca
 2. Open `http://localhost:8080/syncprompt-notion.html` in your browser
 3. Enter your Notion API key and database ID in the settings panel
 
-## Recommended Browser
+## Browser Compatibility
 
-**Google Chrome** works best. Safari works too but voice recognition can be less reliable.
+- **Safari (Mac) — Recommended.** Voice recognition runs on-device (Apple Speech), works offline, most reliable.
+- **Chrome (Mac/Windows) — Works**, but voice recognition uses Google servers (requires internet). May occasionally go silent during long sessions — the app detects this and auto-recovers.
+- **Edge (Windows) — Should work.** Same engine as Chrome, not extensively tested.
 
 ## License
 
