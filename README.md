@@ -8,6 +8,8 @@ A browser-based teleprompter with real-time voice synchronization. Your script s
 
 👉 **https://gaufredev.github.io/syncprompt/syncprompt.html**
 
+Use **Safari** for the best experience (on-device speech recognition, works offline). Chrome and Edge work too but rely on cloud servers. **Firefox probably won't work** (voice sync requires the Web Speech API, which Firefox doesn't support).
+
 ## Local Setup (Mac)
 
 If you want to run it locally (needed for the Notion edition), everything you need is already on your Mac.
