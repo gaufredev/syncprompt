@@ -1,6 +1,6 @@
 # SyncPrompt
 
-A browser-based teleprompter with real-time voice synchronization. Your script scrolls automatically as you speak — no foot pedal, no remote, just your voice.
+A browser-based teleprompter with real-time voice synchronization. Your script scrolls automatically as you speak — no foot pedal, no remote, just your voice. It also generates timestamped subtitle files (SRT, VTT) as you record, ready to use in your video editor.
 
 ## Try It Online
 
