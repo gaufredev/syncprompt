@@ -49,6 +49,16 @@ The app opens automatically in your browser. That's it!
 | Voice sync feels off | Speak closer to the mic, or use Chrome instead of Safari |
 | "address already in use" | Another app uses port 8080. Edit `PORT = 8080` in `server.py` to 8081 |
 
+## Notion Edition
+
+There's also a **Notion-connected version** (`syncprompt-notion.html`) that loads scripts directly from a Notion database — no copy-pasting needed. You manage your scripts in Notion and the prompter pulls them in automatically.
+
+This version **only works locally** (not from the hosted GitHub Pages link) because it needs a small server to talk to the Notion API. To use it:
+
+1. Follow the local setup steps above (download + `start.sh`)
+2. Open `http://localhost:8080/syncprompt-notion.html` in your browser
+3. Enter your Notion API key and database ID in the settings panel
+
 ## Recommended Browser
 
 **Google Chrome** works best. Safari works too but voice recognition can be less reliable.
