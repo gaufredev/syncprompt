@@ -1248,7 +1248,7 @@ function buildControlUI() {
   return `
     <div class="control-window">
       <div class="top-bar">
-        <h1>SyncPrompt <span class="version-tag">v0.6</span> <span style="font-size:11px;font-weight:400;opacity:0.5;letter-spacing:0.5px;">NOTION EDITION</span></h1>
+        <h1>SyncPrompt <span class="version-tag">v0.6.2</span> <span style="font-size:11px;font-weight:400;opacity:0.5;letter-spacing:0.5px;">NOTION EDITION</span></h1>
         <button onclick="openTeleprompterWindow()" class="primary" id="open-tp-btn">Open Teleprompter</button>
         <span class="separator"></span>
         <button onclick="toggleStart()" id="start-btn" disabled>Start</button>
@@ -1363,10 +1363,8 @@ function buildControlUI() {
             <input type="password" id="notion-key" placeholder="ntn_..." value="${localStorage.getItem('tp_notion_key') || ''}">
             <button onclick="document.getElementById('notion-key').type = document.getElementById('notion-key').type === 'password' ? 'text' : 'password'">Show</button>
           </div>
-          <label style="font-size:11px;color:var(--text-dim);">Database ID</label>
-          <div class="notion-key-row">
-            <input type="text" id="notion-db" placeholder="paste database ID..." value="${localStorage.getItem('tp_notion_db') || ''}" onchange="localStorage.setItem('tp_notion_db', this.value.trim())">
-          </div>
+          <label style="font-size:11px;color:var(--text-dim);margin-top:6px;">Database ID</label>
+          <input type="text" id="notion-db-id" placeholder="abc123..." value="${localStorage.getItem('tp_notion_db') || ''}" style="font-size:12px;margin-top:2px;">
           <button class="notion-btn" id="notion-load-btn" onclick="fetchNotionScripts()">Load Scripts</button>
           <div class="notion-script-list" id="notion-script-list"></div>
           <div class="notion-status" id="notion-status"></div>
@@ -1441,7 +1439,7 @@ function buildControlUI() {
         <h3>About</h3>
         <p>SyncPrompt was born out of necessity. As a non-native Korean speaker creating YouTube content in Korea, I needed a teleprompter that could actually follow my voice — not just scroll at a fixed speed and hope for the best. Existing tools couldn't handle the pace changes, the hesitations, or switching between languages mid-script. So I built one that does.</p>
         <p>This Notion Edition adds direct script loading from your Notion database, so you can write in Notion and teleprompter straight from there.</p>
-        <p>This is a free, open-source tool. If you find it useful, find bugs, or have ideas to make it better, I'd love to hear from you.</p>
+        <p>It works great for me — I hope it works for you too. This is a free, open-source tool. If you find it useful, find bugs, or have ideas to make it better, I'd love to hear from you.</p>
         <p style="font-size:11px;color:var(--text-dim);">Made by <strong>gaufre.dev</strong> — a Belgian dev building tools from Seoul.</p>
 
         <h3>Browser Compatibility</h3>
@@ -1454,7 +1452,7 @@ function buildControlUI() {
         <p style="font-size:11px;color:var(--text-dim);">Built on macOS. Windows users: Chrome or Edge should work fine. If you hit issues, please report them.</p>
 
         <h3>Getting Started</h3>
-        <p>Paste or type your script in the editor, or load it from Notion using the sidebar. Click <strong>Open Teleprompter</strong> to launch the display window. Drag it to your Elgato Prompter or second screen and press <kbd>F</kbd> for fullscreen.</p>
+        <p>Paste or type your script in the editor, or load it from Notion using the sidebar. Click <strong>Open Teleprompter</strong> to launch the display window. Drag it to your prompter or second screen and press <kbd>F</kbd> for fullscreen.</p>
 
         <h3>Voice Sync</h3>
         <p><strong>Voice mode</strong> makes the teleprompter follow your voice instead of scrolling at a fixed speed. It listens through your microphone, recognizes what you're saying, and matches it to your script — automatically scrolling to keep up with where you are.</p>
@@ -1462,7 +1460,8 @@ function buildControlUI() {
         <p>Without voice mode, you can still use <strong>Auto Scroll</strong> for a fixed-speed scroll, or scroll manually.</p>
 
         <h3>Notion Integration</h3>
-        <p>Load scripts directly from your Notion database. See the <strong>ⓘ Setup</strong> link in the Notion panel for first-time configuration.</p>
+        <p>Load scripts directly from your Notion database. You need a Notion integration (API key) and a database of script pages.</p>
+        <p><a href="#" onclick="event.preventDefault(); closeHelp(); setTimeout(showNotionHelp, 200);" style="color:var(--accent); cursor:pointer; font-weight:600;">Open Notion Setup Guide →</a></p>
 
         <h3>Script Formatting</h3>
         <ul>
@@ -1501,7 +1500,9 @@ function buildControlUI() {
         </ul>
 
         <h3>Open Source</h3>
-        <p>SyncPrompt is open source. Found a bug? Have a feature idea? Contributions and feedback are welcome on <strong>GitHub</strong>. Feel free to fork, improve, and submit a pull request.</p>
+        <p>SyncPrompt is open source. Found a bug? Have a feature idea? Contributions and feedback are welcome.</p>
+        <p><a href="https://github.com/gaufredev/syncprompt" target="_blank" style="color:var(--accent);">github.com/gaufredev/syncprompt</a></p>
+        <p style="font-size:11px;color:var(--text-dim);">Released under the MIT License. Feel free to fork, improve, and submit a pull request. You can also open an issue to report bugs or suggest features.</p>
       </div>
     </div>
 
@@ -1519,29 +1520,60 @@ function buildControlUI() {
           <li>Paste it in the API Key field in the sidebar</li>
         </ul>
 
-        <h3>2. Share Your Database</h3>
+        <h3>2. Set Up Your Database</h3>
+        <p>Create a Notion database to hold your scripts. Each page in the database = one script.</p>
+        <ul>
+          <li>The database needs a <strong>Title</strong> property (this is the script name shown in the sidebar)</li>
+          <li>You can set a <strong>page icon emoji</strong> for each script — it shows next to the title in the script list. Use it to visually tag scripts (e.g., ✅ for ready, 🎬 for filmed, 📝 for draft)</li>
+          <li>No other properties are required — the app only reads the title, icon, and page content</li>
+        </ul>
+
+        <h3>3. Script Versioning (Optional)</h3>
+        <p>If you iterate on scripts, you can create <strong>child pages</strong> inside a script page for different versions. When loading a script, the app looks for:</p>
+        <ul>
+          <li>A child page with <strong>"Current"</strong> or <strong>✅</strong> in its title → loads that version</li>
+          <li>If no match, it loads the <strong>last child page</strong> (assumed to be the latest)</li>
+          <li>If there are no child pages, it loads the page content directly</li>
+        </ul>
+
+        <h3>4. Share Your Database</h3>
         <ul>
           <li>Open your scripts database in Notion</li>
           <li>Click <strong>...</strong> (top right) → <strong>Connections</strong></li>
           <li>Search for your integration name and add it</li>
         </ul>
 
-        <h3>3. Start the Server</h3>
+        <h3>5. Start the Server</h3>
         <p>SyncPrompt needs a local proxy server to talk to Notion (browser security prevents direct API calls). Run:</p>
         <p><code>./start.sh</code></p>
         <p>This starts <code>server.py</code> on port 8080 and opens SyncPrompt in your browser.</p>
 
-        <h3>4. Load Scripts</h3>
-        <p>Click <strong>Load Scripts</strong> in the sidebar. Your scripts appear as a list. Click any script to load it — the app automatically finds the current version (child page with "Current" in the title) and converts it to teleprompter format.</p>
+        <h3>6. Get Your Database ID</h3>
+        <p>Open your database as a <strong>full page</strong> in Notion (not as an inline view). The URL looks like:</p>
+        <p><code>notion.so/your-workspace/<strong>b4fbf0e0d1d0...</strong>?v=0b7226a9...</code></p>
+        <p>The long string <strong>before</strong> <code>?v=</code> is your Database ID. The part <strong>after</strong> <code>?v=</code> is the view ID — don't use that one.</p>
+        <p style="margin-top:6px;">⚠️ Common mistake: pasting the view ID instead of the database ID. If you get a "could not find database" error, double-check you copied the right part.</p>
+        <p style="margin-top:4px;">Paste the Database ID in the <strong>Database ID</strong> field in the sidebar. It's saved automatically — you only need to enter it once.</p>
 
-        <h3>Script Structure in Notion</h3>
+        <h3>7. Load Scripts</h3>
+        <p>Click <strong>Load Scripts</strong> in the sidebar. Your scripts appear sorted by last edited. Click any script to load it into the editor.</p>
+
+        <h3>How Notion Content Is Converted</h3>
         <ul>
-          <li><strong>Headings</strong> become chapter markers (<code>## Title</code>)</li>
-          <li><strong>Dividers</strong> become section breaks (<code>---</code>)</li>
-          <li><strong>Bold text</strong> is preserved</li>
-          <li><strong>[EDITOR: ...]</strong> notes are automatically removed</li>
-          <li><strong>(출처: ...)</strong> source citations are removed</li>
-          <li>Everything before a "TELEPROMPTER" heading is skipped</li>
+          <li><strong>Headings (H1, H2, H3)</strong> → chapter markers (<code>## Title</code>)</li>
+          <li><strong>Bracket headings</strong> like <code>[HOOK]</code>, <code>[SECTION 1]</code> → cleaned chapter titles</li>
+          <li><strong>Dividers</strong> → section breaks (<code>---</code>)</li>
+          <li><strong>Bold text</strong> → preserved as <code>**bold**</code></li>
+          <li><strong>Paragraphs, quotes, callouts</strong> → script lines</li>
+          <li><strong>Bulleted / numbered lists</strong> → prefixed with bullet or number</li>
+        </ul>
+
+        <h3>Auto-Filtered Content</h3>
+        <p>The following is automatically removed or skipped:</p>
+        <ul>
+          <li><strong>[EDITOR: ...]</strong>, <strong>[ON-SCREEN TEXT: ...]</strong>, <strong>[B-ROLL: ...]</strong> — production notes</li>
+          <li><strong>(출처: ...)</strong>, <strong>(Source: ...)</strong>, <strong>(Sources: ...)</strong> — source citations</li>
+          <li>Everything <strong>before a "TELEPROMPTER" heading</strong> — if your page has a heading containing the word "TELEPROMPTER", only content after it is loaded. Use this to keep research notes above and the actual script below.</li>
         </ul>
       </div>
     </div>
@@ -1856,8 +1888,8 @@ function toggleLang(code, checked) {
 
 // ---- Notion Integration ----
 function getNotionDbId() {
-  const input = document.getElementById('notion-db');
-  const id = input ? input.value.trim() : (localStorage.getItem('tp_notion_db') || '');
+  const input = document.getElementById('notion-db-id');
+  const id = input ? input.value.trim() : '';
   if (id) localStorage.setItem('tp_notion_db', id);
   return id;
 }
@@ -1897,12 +1929,12 @@ async function notionFetch(path, method, body) {
 }
 
 async function fetchNotionScripts() {
+  const dbId = getNotionDbId();
+  if (!dbId) { setNotionStatus('Enter Database ID first', 'error'); return; }
   const btn = document.getElementById('notion-load-btn');
   if (btn) btn.classList.add('loading');
   setNotionStatus('Loading...');
   try {
-    const dbId = getNotionDbId();
-    if (!dbId) { setNotionStatus('Enter Database ID first', 'error'); if (btn) btn.classList.remove('loading'); return; }
     const data = await notionFetch(`databases/${dbId}/query`, 'POST', {
       page_size: 50,
       sorts: [{ timestamp: 'last_edited_time', direction: 'descending' }],
@@ -1970,8 +2002,8 @@ function notionBlocksToText(blocks) {
 
     // Skip editor notes [EDITOR: ...] and [ON-SCREEN TEXT: ...]
     if (text.match(/^\[(?:EDITOR|ON-SCREEN TEXT|B-ROLL|CUT TO|INSERT):/i)) continue;
-    // Skip source citations (출처 : ...) — not useful for teleprompter
-    if (text.match(/^\(출처\s*[:：]/)) continue;
+    // Skip source citations — not useful for teleprompter
+    if (text.match(/^\((?:출처|sources?)\s*[:：]/i)) continue;
 
     // Skip metadata/notes before teleprompter section
     if (!foundTeleprompter && hasTeleprompterHeading) continue;
@@ -2173,7 +2205,13 @@ function exportCaptions(format) {
   const entries = buildCaptionEntries();
   if (entries.length === 0) { alert('No caption data recorded. Run a session first.'); return; }
   let output = '';
-  if (format === 'vtt') {
+  if (format === 'txt') {
+    entries.forEach((e, i) => {
+      const start = formatSrtTime(e.startMs).replace(',', '.');
+      const end = formatSrtTime(e.endMs).replace(',', '.');
+      output += `[${start} → ${end}] ${e.text}\n`;
+    });
+  } else if (format === 'vtt') {
     output = 'WEBVTT\n\n';
     entries.forEach((e, i) => {
       const start = formatSrtTime(e.startMs).replace(',', '.');
@@ -2199,7 +2237,7 @@ function showExportMenu(btn) {
   if (existing) { existing.remove(); return; }
   const menu = document.createElement('div');
   menu.className = 'export-menu';
-  menu.innerHTML = `<button onclick="event.stopPropagation(); exportCaptions('srt'); this.parentElement.remove()">SRT (Recommended)</button><button onclick="event.stopPropagation(); exportCaptions('vtt'); this.parentElement.remove()">VTT (Web)</button>`;
+  menu.innerHTML = `<button onclick="event.stopPropagation(); exportCaptions('srt'); this.parentElement.remove()">SRT (Recommended)</button><button onclick="event.stopPropagation(); exportCaptions('vtt'); this.parentElement.remove()">VTT (Web)</button><button onclick="event.stopPropagation(); exportCaptions('txt'); this.parentElement.remove()">TXT (Plain text)</button>`;
   btn.style.position = 'relative';
   btn.appendChild(menu);
   setTimeout(() => {
@@ -2363,10 +2401,10 @@ function startSession() {
   const dot = document.getElementById('status-dot');
   const text = document.getElementById('status-text');
   if (isVoiceActive) {
-    dot.classList.add('listening');
-    text.textContent = 'Listening...';
+    if (dot) dot.classList.add('listening');
+    if (text) text.textContent = 'Listening...';
   } else {
-    text.textContent = 'Scrolling';
+    if (text) text.textContent = 'Scrolling';
   }
 
   broadcastTpState();
@@ -2958,7 +2996,7 @@ function copyDiagLog() {
     ? scriptSyllables[currentAlignPos]?.lineIndex ?? currentLineIndex : currentLineIndex;
   const totalLines = chapters.reduce((sum, ch) => sum + ch.lines.length, 0);
 
-  let header = `=== SyncPrompt Debug Log (v0.6) ===\n`;
+  let header = `=== SyncPrompt Debug Log (v0.6.2) ===\n`;
   header += `Time: ${new Date().toLocaleString()}\n`;
   header += `Browser: ${navigator.userAgent.includes('Safari') && !navigator.userAgent.includes('Chrome') ? 'Safari' : 'Chrome'}\n`;
   header += `Script lines: ${totalLines} | Script syllables: ${scriptSyllables.length} | Script words: ${scriptWords.length}\n`;
@@ -3582,10 +3620,13 @@ function startRenderLoop() {
       }
     }
 
-    requestAnimationFrame(frame);
+    rafId = requestAnimationFrame(frame);
   }
-  requestAnimationFrame(frame);
+  rafId = requestAnimationFrame(frame);
 }
+
+let rafId = null;
+window.addEventListener('beforeunload', () => { if (rafId) cancelAnimationFrame(rafId); });
 
 // ---- Init ----
 if (IS_TELEPROMPTER) {

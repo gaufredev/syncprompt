@@ -1185,7 +1185,7 @@ function buildControlUI() {
   return `
     <div class="control-window">
       <div class="top-bar">
-        <h1>SyncPrompt <span class="version-tag">v0.6</span></h1>
+        <h1>SyncPrompt <span class="version-tag">v0.6.2</span></h1>
         <button onclick="openTeleprompterWindow()" class="primary" id="open-tp-btn">Open Teleprompter</button>
         <span class="separator"></span>
         <button onclick="toggleStart()" id="start-btn" disabled>Start</button>
@@ -1361,7 +1361,7 @@ function buildControlUI() {
 
         <h3>About</h3>
         <p>SyncPrompt was born out of necessity. As a non-native Korean speaker creating YouTube content in Korea, I needed a teleprompter that could actually follow my voice — not just scroll at a fixed speed and hope for the best. Existing tools couldn't handle the pace changes, the hesitations, or switching between languages mid-script. So I built one that does.</p>
-        <p>This is a free, open-source tool. If you find it useful, find bugs, or have ideas to make it better, I'd love to hear from you.</p>
+        <p>It works great for me — I hope it works for you too. This is a free, open-source tool. If you find it useful, find bugs, or have ideas to make it better, I'd love to hear from you.</p>
         <p style="font-size:11px;color:var(--text-dim);">Made by <strong>gaufre.dev</strong> — a Belgian dev building tools from Seoul.</p>
 
         <h3>Browser Compatibility</h3>
@@ -1374,7 +1374,7 @@ function buildControlUI() {
         <p style="font-size:11px;color:var(--text-dim);">Built on macOS. Windows users: Chrome or Edge should work fine. If you hit issues, please report them.</p>
 
         <h3>Getting Started</h3>
-        <p>Paste or type your script in the editor, then click <strong>Open Teleprompter</strong> to launch the display window. Drag it to your Elgato Prompter or second screen and press <kbd>F</kbd> for fullscreen.</p>
+        <p>Paste or type your script in the editor, then click <strong>Open Teleprompter</strong> to launch the display window. Drag it to your prompter or second screen and press <kbd>F</kbd> for fullscreen.</p>
 
         <h3>Voice Sync</h3>
         <p><strong>Voice mode</strong> makes the teleprompter follow your voice instead of scrolling at a fixed speed. It listens through your microphone, recognizes what you're saying, and matches it to your script — automatically scrolling to keep up with where you are.</p>
@@ -1418,7 +1418,9 @@ function buildControlUI() {
         </ul>
 
         <h3>Open Source</h3>
-        <p>SyncPrompt is open source. Found a bug? Have a feature idea? Contributions and feedback are welcome on <strong>GitHub</strong>. Feel free to fork, improve, and submit a pull request.</p>
+        <p>SyncPrompt is open source. Found a bug? Have a feature idea? Contributions and feedback are welcome.</p>
+        <p><a href="https://github.com/gaufredev/syncprompt" target="_blank" style="color:var(--accent);">github.com/gaufredev/syncprompt</a></p>
+        <p style="font-size:11px;color:var(--text-dim);">Released under the MIT License. Feel free to fork, improve, and submit a pull request. You can also open an issue to report bugs or suggest features.</p>
       </div>
     </div>
   `;
@@ -1836,7 +1838,13 @@ function exportCaptions(format) {
   if (entries.length === 0) { alert('No caption data recorded. Run a session first.'); return; }
 
   let output = '';
-  if (format === 'vtt') {
+  if (format === 'txt') {
+    entries.forEach((e, i) => {
+      const start = formatSrtTime(e.startMs).replace(',', '.');
+      const end = formatSrtTime(e.endMs).replace(',', '.');
+      output += `[${start} → ${end}] ${e.text}\n`;
+    });
+  } else if (format === 'vtt') {
     output = 'WEBVTT\n\n';
     entries.forEach((e, i) => {
       const start = formatSrtTime(e.startMs).replace(',', '.');
@@ -1864,7 +1872,7 @@ function showExportMenu(btn) {
   if (existing) { existing.remove(); return; }
   const menu = document.createElement('div');
   menu.className = 'export-menu';
-  menu.innerHTML = `<button onclick="event.stopPropagation(); exportCaptions('srt'); this.parentElement.remove()">SRT (Recommended)</button><button onclick="event.stopPropagation(); exportCaptions('vtt'); this.parentElement.remove()">VTT (Web)</button>`;
+  menu.innerHTML = `<button onclick="event.stopPropagation(); exportCaptions('srt'); this.parentElement.remove()">SRT (Recommended)</button><button onclick="event.stopPropagation(); exportCaptions('vtt'); this.parentElement.remove()">VTT (Web)</button><button onclick="event.stopPropagation(); exportCaptions('txt'); this.parentElement.remove()">TXT (Plain text)</button>`;
   btn.style.position = 'relative';
   btn.appendChild(menu);
   // Close on outside click
@@ -2052,10 +2060,10 @@ function startSession() {
   const dot = document.getElementById('status-dot');
   const text = document.getElementById('status-text');
   if (isVoiceActive) {
-    dot.classList.add('listening');
-    text.textContent = 'Listening...';
+    if (dot) dot.classList.add('listening');
+    if (text) text.textContent = 'Listening...';
   } else {
-    text.textContent = 'Scrolling';
+    if (text) text.textContent = 'Scrolling';
   }
 
   broadcastTpState();
@@ -2648,7 +2656,7 @@ function copyDiagLog() {
     ? scriptSyllables[currentAlignPos]?.lineIndex ?? currentLineIndex : currentLineIndex;
   const totalLines = chapters.reduce((sum, ch) => sum + ch.lines.length, 0);
 
-  let header = `=== SyncPrompt Debug Log (v0.6) ===\n`;
+  let header = `=== SyncPrompt Debug Log (v0.6.2) ===\n`;
   header += `Time: ${new Date().toLocaleString()}\n`;
   header += `Browser: ${navigator.userAgent.includes('Safari') && !navigator.userAgent.includes('Chrome') ? 'Safari' : 'Chrome'}\n`;
   header += `Script lines: ${totalLines} | Script syllables: ${scriptSyllables.length} | Script words: ${scriptWords.length}\n`;
@@ -3273,10 +3281,13 @@ function startRenderLoop() {
       }
     }
 
-    requestAnimationFrame(frame);
+    rafId = requestAnimationFrame(frame);
   }
-  requestAnimationFrame(frame);
+  rafId = requestAnimationFrame(frame);
 }
+
+let rafId = null;
+window.addEventListener('beforeunload', () => { if (rafId) cancelAnimationFrame(rafId); });
 
 // ---- Init ----
 if (IS_TELEPROMPTER) {
