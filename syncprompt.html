@@ -1,0 +1,3289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SyncPrompt</title>
+<link rel="icon" type="image/png" href="favicon.png">
+<link rel="apple-touch-icon" href="favicon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Noto+Sans+KR:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --radius-sm: 5px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+}
+
+/* ===== DARK THEME ===== */
+body.theme-dark {
+  --bg: #131316;
+  --text: #f0eeeb;
+  --text-muted: #a0a0a4;
+  --text-dim: #6a6a6e;
+  --accent: #5b9cf5;
+  --accent-hover: #78b0ff;
+  --accent-glow: rgba(91, 156, 245, 0.15);
+  --green: #5ec269;
+  --green-dim: rgba(94, 194, 105, 0.15);
+  --red: #e05555;
+  --red-dim: rgba(224, 85, 85, 0.15);
+  --orange: #e5a03c;
+  --panel-bg: #1a1a1e;
+  --border: rgba(255,255,255,0.08);
+  --border-subtle: rgba(255,255,255,0.05);
+  --control-bg: #222228;
+  --control-bg-hover: #2c2c33;
+  --placeholder: #45454a;
+  --scrollbar-thumb: rgba(255,255,255,0.1);
+  --scrollbar-hover: rgba(255,255,255,0.18);
+  --diag-bg: #0f0f12;
+  --mic-bg: rgba(255,255,255,0.08);
+  --dot-off: #45454a;
+}
+
+/* ===== LIGHT THEME — Sea Blue + Cream ===== */
+body.theme-light {
+  --bg: #F5EEE1;
+  --text: #2D2A26;
+  --text-muted: #6B655C;
+  --text-dim: #9E9789;
+  --accent: #2E6E8E;
+  --accent-hover: #245A74;
+  --accent-glow: rgba(46,110,142,0.12);
+  --green: #3D8B4A;
+  --green-dim: rgba(61, 139, 74, 0.12);
+  --red: #C04040;
+  --red-dim: rgba(192, 64, 64, 0.1);
+  --orange: #B87D2A;
+  --panel-bg: #EDE4D4;
+  --border: #DDD6C8;
+  --border-subtle: #E5DFD7;
+  --control-bg: #F5EEE1;
+  --control-bg-hover: #E5DDD0;
+  --placeholder: #C0B8AA;
+  --scrollbar-thumb: rgba(0,0,0,0.12);
+  --scrollbar-hover: rgba(0,0,0,0.2);
+  --diag-bg: #E8E0D2;
+  --mic-bg: rgba(0,0,0,0.08);
+  --dot-off: #C0B8AA;
+}
+
+/* Theme toggle button */
+.theme-toggle {
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--control-bg);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 13px;
+  font-family: 'Instrument Sans', sans-serif;
+  transition: all 0.15s;
+  line-height: 1;
+}
+.theme-toggle:hover { background: var(--control-bg-hover); color: var(--text); }
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Instrument Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  height: 100vh;
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+  transition: background 0.3s, color 0.3s;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: 10px; }
+::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-hover); }
+
+/* ===== CONTROL WINDOW ===== */
+.control-window {
+  display: grid;
+  grid-template-columns: 272px 1fr;
+  grid-template-rows: auto 1fr auto;
+  height: 100vh;
+}
+
+.top-bar {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 18px;
+  background: var(--panel-bg);
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+
+.top-bar h1 {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.3px;
+  margin-right: auto;
+  color: var(--text);
+}
+.top-bar h1 .version-tag {
+  font-weight: 400;
+  color: var(--text-dim);
+  font-size: 0.55em;
+  letter-spacing: 0;
+  vertical-align: middle;
+  margin-left: 6px;
+}
+
+.top-bar button {
+  padding: 6px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--control-bg);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 12px;
+  font-family: 'Instrument Sans', sans-serif;
+  font-weight: 500;
+  transition: all 0.15s ease;
+  letter-spacing: 0.01em;
+}
+.top-bar button:hover { background: var(--control-bg-hover); color: var(--text); }
+.top-bar button:not(.primary):not(.voice-mode):not(.active):not(.theme-toggle):not(:disabled) {
+  color: var(--text);
+}
+.top-bar button.primary {
+  background: var(--accent);
+  color: #fff;
+  border-color: transparent;
+  font-weight: 600;
+  box-shadow: 0 0 12px var(--accent-glow), inset 0 1px 0 rgba(255,255,255,0.1);
+}
+.top-bar button.primary:hover { background: var(--accent-hover); box-shadow: 0 0 20px var(--accent-glow); }
+.top-bar button.active {
+  background: var(--red);
+  border-color: transparent;
+  color: #fff;
+  box-shadow: 0 0 12px var(--red-dim);
+}
+.top-bar button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.top-bar button.voice-mode {
+  background: var(--green-dim);
+  border-color: rgba(94, 194, 105, 0.2);
+  color: var(--green);
+}
+.top-bar button.voice-mode.on {
+  background: var(--green);
+  border-color: transparent;
+  color: #fff;
+  box-shadow: 0 0 12px var(--green-dim);
+}
+
+.top-bar button.end-session {
+  background: var(--red-dim);
+  border-color: rgba(220,60,60,0.2);
+  color: var(--red);
+}
+.top-bar button.end-session:hover { background: var(--red); color: #fff; }
+
+.top-bar .separator {
+  width: 1px;
+  height: 20px;
+  background: var(--border);
+}
+
+/* Sidebar */
+.sidebar {
+  background: var(--panel-bg);
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+  padding: 16px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.sidebar h3 {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  color: var(--text-dim);
+  margin-bottom: 8px;
+  font-weight: 600;
+}
+
+.control-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.control-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 2px 0;
+}
+
+.control-row label {
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  font-weight: 400;
+}
+
+.control-row input[type="range"] {
+  flex: 1;
+  max-width: 110px;
+  accent-color: var(--accent);
+  height: 3px;
+}
+
+.control-row .value {
+  font-size: 10px;
+  font-family: 'JetBrains Mono', monospace;
+  color: var(--text-dim);
+  min-width: 34px;
+  text-align: right;
+  letter-spacing: -0.3px;
+}
+
+.control-row select, .control-row input[type="text"] {
+  flex: 1;
+  max-width: 130px;
+  padding: 4px 8px;
+  background: var(--control-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-size: 12px;
+  font-family: 'Instrument Sans', sans-serif;
+  transition: border-color 0.15s;
+}
+.control-row select:hover, .control-row input[type="text"]:hover {
+  border-color: var(--text-dim);
+}
+.control-row select:focus, .control-row input[type="text"]:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-glow);
+}
+
+.toggle-btn {
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--control-bg);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 11px;
+  font-family: 'Instrument Sans', sans-serif;
+  font-weight: 500;
+  transition: all 0.15s ease;
+}
+.toggle-btn:hover { background: var(--control-bg-hover); color: var(--text); }
+.toggle-btn.on {
+  background: var(--accent);
+  color: #fff;
+  border-color: transparent;
+  box-shadow: 0 0 8px var(--accent-glow);
+}
+
+/* Main area - script editor */
+.main-area {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+.script-editor {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 14px 16px;
+  gap: 10px;
+}
+
+.script-editor .editor-toolbar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.script-editor .editor-toolbar button {
+  padding: 5px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--control-bg);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 12px;
+  font-family: 'Instrument Sans', sans-serif;
+  font-weight: 500;
+  transition: all 0.15s;
+}
+.script-editor .editor-toolbar button:hover { background: var(--control-bg-hover); color: var(--text); }
+
+.script-editor .editor-toolbar .info {
+  margin-left: auto;
+  font-size: 11px;
+  font-family: 'JetBrains Mono', monospace;
+  color: var(--text-dim);
+  letter-spacing: -0.3px;
+}
+
+.script-editor textarea {
+  flex: 1;
+  background: var(--panel-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text);
+  padding: 16px;
+  font-size: 14px;
+  font-family: 'Instrument Sans', sans-serif;
+  resize: none;
+  line-height: 1.7;
+  transition: border-color 0.2s;
+}
+.script-editor textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-glow);
+}
+.script-editor textarea::placeholder { color: var(--placeholder); }
+
+/* Chapter list */
+.chapter-list {
+  max-height: 150px;
+  overflow-y: auto;
+}
+.chapter-item {
+  padding: 5px 10px;
+  font-size: 12px;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: all 0.12s;
+}
+.chapter-item:hover { background: var(--control-bg-hover); color: var(--text); }
+.chapter-item.active { background: var(--accent); color: #fff; }
+
+/* Status bar */
+.status-bar {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 7px 18px;
+  background: var(--panel-bg);
+  border-top: 1px solid var(--border);
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.status-bar .status-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.status-bar .status-item span {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  letter-spacing: -0.3px;
+}
+
+.mic-level {
+  width: 50px;
+  height: 4px;
+  background: var(--mic-bg);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.mic-level-fill {
+  height: 100%;
+  width: 0%;
+  background: var(--green);
+  border-radius: 4px;
+  transition: width 0.1s;
+}
+
+.status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--dot-off);
+}
+.status-dot.listening { background: var(--green); animation: pulse 1.5s infinite; }
+.status-dot.error { background: var(--red); }
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+/* Diagnostic panel */
+.diagnostic-panel {
+  display: none;
+  background: var(--diag-bg);
+  border-top: 1px solid var(--border);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+}
+.diagnostic-panel.visible { display: flex; flex-direction: column; }
+.diag-toolbar {
+  display: flex;
+  gap: 6px;
+  padding: 6px 14px;
+  border-bottom: 1px solid var(--border-subtle);
+  align-items: center;
+}
+.diag-toolbar button {
+  padding: 3px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--control-bg);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 10px;
+  font-family: 'JetBrains Mono', monospace;
+  transition: all 0.12s;
+}
+.diag-toolbar button:hover { background: var(--control-bg-hover); color: var(--text); }
+.diag-toolbar .diag-stats {
+  margin-left: auto;
+  color: var(--text-dim);
+  font-size: 10px;
+}
+.diag-log {
+  padding: 8px 14px;
+  max-height: 150px;
+  overflow-y: auto;
+}
+.diagnostic-panel .diag-line { color: var(--text-dim); margin: 2px 0; line-height: 1.5; }
+.diagnostic-panel .diag-line.match { color: var(--green); }
+.diagnostic-panel .diag-line.nomatch { color: var(--red); }
+.diagnostic-panel .diag-line.warn { color: var(--orange); }
+.diagnostic-panel .diag-line.info { color: var(--accent); }
+
+/* Countdown overlay */
+.countdown-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.88);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  z-index: 1000;
+  align-items: center;
+  justify-content: center;
+  font-size: 120px;
+  font-weight: 300;
+  font-family: 'Instrument Sans', sans-serif;
+  color: var(--accent);
+  text-shadow: 0 0 60px var(--accent-glow);
+}
+.countdown-overlay.visible { display: flex; }
+
+/* ===== TELEPROMPTER WINDOW ===== */
+.teleprompter-window {
+  height: 100vh;
+  overflow: hidden;
+  position: relative;
+  background: #000;
+}
+
+.teleprompter-scroll-container {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+.teleprompter-content {
+  position: absolute;
+  left: 0;
+  right: 0;
+  will-change: transform;
+}
+
+.teleprompter-line {
+  cursor: pointer;
+  padding: 2px 0;
+  word-break: keep-all;
+  overflow-wrap: break-word;
+  color: #fff;
+  opacity: 1;
+}
+
+.teleprompter-line.past {
+  opacity: var(--dim-opacity, 0.35);
+}
+
+.tp-word {
+  transition: opacity 0.15s;
+}
+
+/* On the current line, spoken words dim individually */
+.teleprompter-line.current .tp-word.spoken {
+  opacity: var(--dim-opacity, 0.35);
+}
+
+.teleprompter-line.note-line {
+  font-style: italic;
+  opacity: 0.5;
+  font-size: 0.75em;
+}
+.teleprompter-line.note-line.past {
+  opacity: 0.25;
+}
+
+.teleprompter-chapter-divider {
+  padding: 10px 0;
+  height: 0;
+  overflow: hidden;
+  border-top: 1px solid #333;
+  margin-top: 10px;
+}
+.teleprompter-chapter-divider.hidden {
+  display: none;
+}
+
+.teleprompter-end-marker {
+  text-align: center;
+  padding: 40px 0;
+  color: #555;
+  font-size: 0.5em;
+  letter-spacing: 4px;
+}
+
+/* Focus line indicator */
+.focus-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--accent);
+  opacity: 0.3;
+  pointer-events: none;
+  z-index: 10;
+}
+
+/* V-margin mask: black bars top and bottom */
+.v-mask-top, .v-mask-bottom {
+  position: absolute;
+  left: 0;
+  right: 0;
+  background: #000;
+  z-index: 5;
+  pointer-events: none;
+}
+.v-mask-top { top: 0; }
+.v-mask-bottom { bottom: 0; }
+
+/* Teleprompter status bar */
+.tp-status-bar {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 20;
+  display: flex;
+  gap: 12px;
+  padding: 6px 16px;
+  background: rgba(30, 30, 30, 0.85);
+  border-radius: 6px;
+  font-size: 14px;
+  font-family: 'Instrument Sans', -apple-system, sans-serif;
+  color: #888;
+  pointer-events: none;
+  transition: opacity 0.5s;
+}
+.tp-status-bar.running { opacity: 0; }
+.tp-status-tag { display: flex; align-items: center; gap: 4px; }
+.tp-status-dot { width: 8px; height: 8px; border-radius: 50%; }
+.tp-status-dot.on { background: #4f4; }
+.tp-status-dot.off { background: #666; }
+.tp-status-dot.listening { background: #4f4; animation: pulse-dot 1.2s infinite; }
+@keyframes pulse-dot { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+/* Line list for "Start from here" */
+.line-list-item { padding: 4px 8px; cursor: pointer; border-radius: var(--radius-sm); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text-muted); display: flex; align-items: center; transition: all 0.1s; }
+.line-list-item:hover { background: var(--control-bg-hover); color: var(--text); }
+.line-list-item.current { background: var(--green-dim); color: var(--green); }
+.line-list-item.selected { background: var(--accent-glow); color: var(--accent); }
+.line-list-item .line-num { color: var(--text-dim); margin-right: 6px; min-width: 20px; display: inline-block; text-align: right; flex-shrink: 0; font-family: 'JetBrains Mono', monospace; font-size: 10px; }
+.line-list-item .srt-num { color: var(--accent); font-size: 9px; font-weight: 600; margin-right: 4px; flex-shrink: 0; font-family: 'JetBrains Mono', monospace; opacity: 0.7; }
+.line-list-item.note { opacity: 0.5; font-style: italic; }
+.export-menu { position: absolute; top: 100%; left: 0; z-index: 100; background: var(--panel-bg); border: 1px solid var(--border); border-radius: var(--radius-sm); box-shadow: 0 4px 12px rgba(0,0,0,0.3); display: flex; flex-direction: column; min-width: 140px; }
+.export-menu button { padding: 8px 12px; background: none; border: none; color: var(--text); font-size: 12px; font-family: 'Instrument Sans', sans-serif; cursor: pointer; text-align: left; }
+.export-menu button:hover { background: var(--accent); color: #fff; }
+.line-list-item .line-text { overflow: hidden; text-overflow: ellipsis; flex: 1; }
+.line-list-item .go-btn { display: none; margin-left: 4px; padding: 1px 8px; background: var(--accent); color: #fff; border: none; border-radius: var(--radius-sm); font-size: 10px; font-family: 'Instrument Sans', sans-serif; font-weight: 600; cursor: pointer; flex-shrink: 0; transition: background 0.12s; }
+.line-list-item .go-btn:hover { background: var(--accent-hover); }
+.line-list-item.selected .go-btn { display: inline-block; }
+.line-list-item .bookmark-star { margin-left: 2px; margin-right: 2px; cursor: pointer; opacity: 0.2; flex-shrink: 0; font-size: 11px; transition: opacity 0.15s; }
+.line-list-item .bookmark-star:hover { opacity: 0.7; }
+.line-list-item .bookmark-star.active { opacity: 1; color: #f5a623; }
+.teleprompter-line.bookmarked::before { content: '★'; position: absolute; left: 8px; color: #f5a623; opacity: 0.5; font-size: 0.6em; }
+.teleprompter-line.bookmarked { position: relative; }
+
+/* Rehearsal stats */
+.rehearsal-stats { font-size: 10px; color: var(--text-dim); margin-top: 4px; font-family: 'JetBrains Mono', monospace; letter-spacing: -0.2px; }
+
+/* Help modal */
+.help-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.6); z-index: 9999; justify-content: center; align-items: center; }
+.help-overlay.visible { display: flex; }
+.help-modal { background: var(--panel-bg); border: 1px solid var(--border); border-radius: var(--radius-lg); max-width: 600px; width: 90%; max-height: 80vh; overflow-y: auto; padding: 28px; box-shadow: 0 20px 60px rgba(0,0,0,0.4); }
+.help-modal h2 { margin: 0 0 16px; font-size: 18px; color: var(--text); }
+.help-modal h3 { margin: 16px 0 6px; font-size: 13px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.5px; }
+.help-modal p, .help-modal li { font-size: 12px; color: var(--text-muted); line-height: 1.6; }
+.help-modal ul { padding-left: 18px; margin: 4px 0; }
+.help-modal kbd { background: var(--control-bg); border: 1px solid var(--border); border-radius: 3px; padding: 1px 5px; font-size: 11px; font-family: 'JetBrains Mono', monospace; color: var(--text); }
+.help-modal .close-btn { float: right; background: none; border: none; color: var(--text-dim); font-size: 20px; cursor: pointer; padding: 0 4px; line-height: 1; }
+.help-modal .close-btn:hover { color: var(--text); }
+
+/* Language selector chips */
+.lang-selector { display: flex; flex-wrap: wrap; gap: 4px; }
+.lang-chip { display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px; background: var(--control-bg); border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 11px; cursor: pointer; user-select: none; color: var(--text-muted); transition: all 0.12s; }
+.lang-chip:hover { border-color: var(--text-dim); }
+.lang-chip input { margin: 0; cursor: pointer; accent-color: var(--accent); }
+.lang-chip:has(input:checked) { background: var(--green-dim); border-color: rgba(94, 194, 105, 0.2); color: var(--green); }
+
+/* Pace indicator */
+.pace-panel { display: none; gap: 12px; padding: 4px 0; font-size: 11px; color: var(--text-dim); align-items: center; }
+.pace-panel.visible { display: flex; }
+.pace-value { font-weight: 600; color: var(--text); font-family: 'JetBrains Mono', monospace; }
+.pace-indicator { padding: 2px 8px; border-radius: var(--radius-sm); font-size: 10px; font-weight: 600; letter-spacing: 0.3px; }
+.pace-indicator.slow { background: rgba(229, 160, 60, 0.15); color: var(--orange); }
+.pace-indicator.good { background: var(--green-dim); color: var(--green); }
+.pace-indicator.fast { background: var(--red-dim); color: var(--red); }
+
+/* Mirror mode */
+.mirrored {
+  transform: scaleX(-1);
+  transform-origin: center center;
+}
+
+
+</style>
+</head>
+<body>
+<script>
+// ============================================================
+// SYNCPROMPT - Single file app
+// ============================================================
+
+const IS_TELEPROMPTER = new URLSearchParams(location.search).has('teleprompter');
+
+// ---- Settings with defaults ----
+const DEFAULT_SETTINGS = {
+  version: 3,
+  fontSize: 36,
+  fontFamily: 'Arial',
+  fontBold: false,
+  lineHeight: 1.6,
+  marginH: 60,
+  marginV: 0,
+  dimOpacity: 0.35,
+  focusLinePercent: 30,
+  scrollSpeed: 30,
+  mirrorMode: false,
+  voiceEngine: 'webspeech',
+  countdownEnabled: true,
+  diagnosticMode: false,
+  showPace: false,
+  targetWpm: 140,
+  showChapterDividers: true,
+  theme: 'dark',
+  scriptLangs: [], // empty = auto-detect. e.g. ['ko','fr'] = only these languages
+};
+
+// All supported languages for the selector
+const AVAILABLE_LANGS = [
+  { code: 'ko', label: '한국어', recog: 'ko-KR' },
+  { code: 'fr', label: 'Français', recog: 'fr-FR' },
+  { code: 'en', label: 'English', recog: 'en-US' },
+  { code: 'ja', label: '日本語', recog: 'ja-JP' },
+  { code: 'zh', label: '中文', recog: 'zh-CN' },
+  { code: 'es', label: 'Español', recog: 'es-ES' },
+  { code: 'de', label: 'Deutsch', recog: 'de-DE' },
+  { code: 'pt', label: 'Português', recog: 'pt-BR' },
+  { code: 'it', label: 'Italiano', recog: 'it-IT' },
+  { code: 'nl', label: 'Nederlands', recog: 'nl-NL' },
+];
+
+let settings = loadSettings();
+let scriptText = localStorage.getItem('tp_script') || '';
+let chapters = [];
+let currentLineIndex = 0;
+let isScrolling = false;
+let isVoiceActive = false;
+let isStarted = false;
+let scrollY = 0;
+let targetScrollY = 0;
+let manualScrollSpeed = 0;
+let elapsedSeconds = 0;
+let elapsedInterval = null;
+let countdownTimer = null;
+let countdownCancelled = false;
+let teleprompterWindow = null;
+let bc = null;
+
+// Voice recognition
+let recognition = null;
+let isLanguageSwitching = false;
+let scriptSyllables = [];
+let scriptWords = []; // Word-level index: [{text, lineIndex, wordIndex, lang, sylStart, sylEnd}]
+let scriptLineLangs = []; // Language per line: ['ko', 'en', ...]
+let currentAlignPos = 0;
+let currentWordIndex = 0; // Track current word position
+let currentRecogLang = 'ko-KR'; // Current recognition language
+let lastConsumedSylCount = 0; // Track consumed transcript syllables
+let lastMatchTime = Date.now();
+let lastLanguageSwitchTime = 0;
+let lastTranscriptContent = ''; // For Chrome stale recognition watchdog
+let lastTranscriptTime = Date.now();
+let staleWatchdogTimer = null;
+
+// Caption timeline recording
+let captionTimeline = []; // [{lineIndex, ms}] — ms relative to session start
+let captionSessionEndMs = 0; // Stored at endSession() for accurate last-entry duration
+let isPaused = false;
+
+function recordLineTransition(lineIndex) {
+  if (!isStarted || isPaused) return;
+  const ms = Date.now() - sessionStats.startTime;
+  if (captionTimeline.length > 0 && captionTimeline[captionTimeline.length - 1].lineIndex === lineIndex) return;
+  captionTimeline.push({ lineIndex, ms });
+  if (settings.diagnosticMode) {
+    const allLines = chapters.flatMap(ch => ch.lines);
+    const lineText = allLines[lineIndex]?.text || '';
+    const preview = lineText.replace(/\*\*/g, '').substring(0, 30);
+    const srtNum = getSrtLineNumber(lineIndex);
+    const timeStr = formatSrtTime(ms).substring(0, 8);
+    addDiagLine(`SRT #${srtNum || '?'}: line ${lineIndex} "${preview}${lineText.length > 30 ? '…' : ''}" at ${timeStr}`, 'info');
+  }
+}
+
+// ---- Helpers ----
+function loadSettings() {
+  try {
+    const s = JSON.parse(localStorage.getItem('tp_settings'));
+    if (s) {
+      // Migrate: keep user settings, add new defaults, update version
+      const merged = { ...DEFAULT_SETTINGS, ...s, version: DEFAULT_SETTINGS.version };
+      // Ensure scriptLangs is always an array
+      if (!Array.isArray(merged.scriptLangs)) merged.scriptLangs = [];
+      return merged;
+    }
+  } catch {}
+  return { ...DEFAULT_SETTINGS };
+}
+
+function saveSettings() {
+  try { localStorage.setItem('tp_settings', JSON.stringify(settings)); } catch {}
+  broadcastMessage({ type: 'settings', settings });
+  broadcastMessage({ type: 'render' });
+}
+
+function saveScript() {
+  try { localStorage.setItem('tp_script', scriptText); } catch {}
+}
+
+function broadcastMessage(msg) {
+  if (bc) bc.postMessage(msg);
+}
+
+function isTeleprompterOpen() {
+  return teleprompterWindow && !teleprompterWindow.closed;
+}
+
+// ---- Note/stage direction detection ----
+// Lines like (톤 : serious), (참고: ...), (분위기: ...) are stage directions
+// Displayed dimmed/italic on teleprompter, skipped by voice matching
+const NOTE_LINE_PATTERN = /^\((?:톤|참고|비고|분위기|연출|출처|note|tone|ref)\s*[:：—\-–]/i;
+function isNoteLine(text) {
+  return NOTE_LINE_PATTERN.test(text.trim());
+}
+
+// ---- Chapter parsing ----
+function parseChapters(text) {
+  const lines = text.split('\n');
+  const chaps = [];
+  let current = { title: 'Start', lines: [], startLine: 0 };
+
+  lines.forEach((line, i) => {
+    const trimmed = line.trim();
+    if (trimmed === '---') {
+      if (current.lines.length > 0 || chaps.length === 0) {
+        chaps.push(current);
+      }
+      current = { title: `Section ${chaps.length + 1}`, lines: [], startLine: i + 1, isDivider: true };
+    } else if (trimmed.startsWith('## ')) {
+      if (current.lines.length > 0 || chaps.length === 0) {
+        chaps.push(current);
+      }
+      current = { title: trimmed.slice(3).trim(), lines: [], startLine: i, isTitle: true };
+    } else if (trimmed.length > 0) {
+      current.lines.push({ text: trimmed, globalIndex: i });
+    }
+  });
+  if (current.lines.length > 0 || chaps.length === 0) {
+    chaps.push(current);
+  }
+  return chaps;
+}
+
+// ---- Language detection ----
+// Detects Korean vs French vs English per line.
+// French markers: accented chars (é, è, ê, à, ù, ç, ô, î, û, ë, ï, ü, â, etc.)
+// and common French words.
+const FRENCH_ACCENTS = /[àâäéèêëïîôùûüÿçœæÀÂÄÉÈÊËÏÎÔÙÛÜŸÇŒÆ]/;
+const FRENCH_WORDS = /\b(je|tu|il|elle|nous|vous|ils|elles|le|la|les|un|une|des|du|de|et|est|sont|dans|pour|pas|que|qui|ce|se|ne|en|au|aux|avec|sur|par|mais|ou|où|donc|car|ni|si|très|plus|aussi|même|tout|bien|fait|être|avoir|faire|dire|aller|voir|savoir|pouvoir|vouloir|c'est|n'est|qu'il|qu'on|qu'elle|d'un|d'une|l'on)\b/i;
+
+function detectLineLang(text) {
+  const langs = settings.scriptLangs;
+  // If only one language selected, always use it
+  if (langs && langs.length === 1) return langs[0];
+
+  let ko = 0, latin = 0;
+  for (const char of text) {
+    const code = char.charCodeAt(0);
+    if (code >= 0xAC00 && code <= 0xD7AF) ko++;
+    else if ((code >= 0x41 && code <= 0x5A) || (code >= 0x61 && code <= 0x7A)) latin++;
+  }
+
+  // If languages are specified, only pick from those
+  if (langs && langs.length > 0) {
+    if (ko >= latin && langs.includes('ko')) return 'ko';
+    if (latin > ko) {
+      if (langs.includes('fr') && (FRENCH_ACCENTS.test(text) || FRENCH_WORDS.test(text))) return 'fr';
+      // Return first latin-script language from selected
+      const latinLangs = langs.filter(l => l !== 'ko');
+      if (latinLangs.length > 0) return latinLangs[0];
+    }
+    return langs[0]; // fallback to first selected
+  }
+
+  // Auto-detect (no languages selected)
+  if (ko >= latin) return 'ko';
+  if (FRENCH_ACCENTS.test(text) || FRENCH_WORDS.test(text)) return 'fr';
+  return 'en';
+}
+
+// ---- Syllable/character extraction for alignment ----
+// Extracts matchable characters: Korean syllables, Latin letters (lowercased), and digits.
+// Language-aware: Korean lines match Hangul, English lines match Latin letters.
+function extractMatchableChar(char) {
+  const code = char.charCodeAt(0);
+  if (code >= 0xAC00 && code <= 0xD7AF) return char;        // Hangul syllable
+  if (code >= 0x3131 && code <= 0x3163) return char;        // Hangul jamo
+  if (code >= 0x41 && code <= 0x5A) return char.toLowerCase(); // Uppercase Latin → lower
+  if (code >= 0x61 && code <= 0x7A) return char;            // Lowercase Latin
+  if (code >= 0x30 && code <= 0x39) return char;            // Digit
+  // French accented chars → normalize to base letter for matching
+  const normalized = char.normalize('NFD').charAt(0).toLowerCase();
+  if (normalized >= 'a' && normalized <= 'z') return normalized;
+  return null;
+}
+
+function extractSyllables(text) {
+  const syls = [];
+  for (const char of text) {
+    const m = extractMatchableChar(char);
+    if (m) syls.push(m);
+  }
+  return syls;
+}
+
+function buildSyllableIndex(chapters) {
+  const syls = [];
+  let lineIdx = 0;
+  let wordIdx = 0;
+  const words = [];
+  const lineLangs = [];
+  chapters.forEach(chap => {
+    chap.lines.forEach(line => {
+      const lang = detectLineLang(line.text);
+      lineLangs.push(lang);
+      const lineIsNote = isNoteLine(line.text);
+      // Strip **bold** markers and invisible Unicode chars (YouTube @mention wrappers)
+      const cleanText = line.text.replace(/\*\*/g, '').replace(/[\u200B-\u200F\u202A-\u202E\uFEFF]/g, '');
+      const lineWords = cleanText.split(/\s+/).filter(w => w.length > 0);
+      lineWords.forEach(w => {
+        const sylStart = syls.length;
+        // Skip @mentions and note/stage direction lines — speech recognition will never produce these
+        const isAtMention = w.startsWith('@');
+        if (!isAtMention && !lineIsNote) {
+          for (const char of w) {
+            const m = extractMatchableChar(char);
+            if (m) {
+              syls.push({ char: m, lineIndex: lineIdx, wordIndex: wordIdx });
+            }
+          }
+        }
+        words.push({ text: w, lineIndex: lineIdx, wordIndex: wordIdx, lang: lang, sylStart: sylStart, sylEnd: syls.length });
+        wordIdx++;
+      });
+      lineIdx++;
+    });
+  });
+  scriptWords = words;
+  scriptLineLangs = lineLangs;
+  return syls;
+}
+
+// ---- LCS-based alignment ----
+function lcsLength(a, b) {
+  const m = a.length, n = b.length;
+  if (m === 0 || n === 0) return 0;
+  const prev = new Array(n + 1).fill(0);
+  const curr = new Array(n + 1).fill(0);
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      if (a[i-1] === b[j-1]) {
+        curr[j] = prev[j-1] + 1;
+      } else {
+        curr[j] = Math.max(prev[j], curr[j-1]);
+      }
+    }
+    for (let j = 0; j <= n; j++) { prev[j] = curr[j]; curr[j] = 0; }
+  }
+  return prev[n];
+}
+
+function findBestMatch(transcript, scriptSyls, currentPos, stuckMs) {
+  stuckMs = stuckMs || 0;
+  const allSyls = extractSyllables(transcript);
+
+  // Safety: if transcript shrank (Safari revision or new session), reset consumed
+  if (allSyls.length < lastConsumedSylCount) {
+    lastConsumedSylCount = 0;
+    addDiagLine(`Transcript shrank (${allSyls.length} < consumed) — reset`, '');
+  }
+
+  // Only use NEW syllables (after what we already consumed/matched)
+  const newSyls = allSyls.slice(lastConsumedSylCount);
+  if (newSyls.length < 2) return null;
+
+  // Word-level search window: wider when stuck for a long time
+  const WORD_WINDOW = stuckMs > 8000 ? 25 : 15;
+  const startWord = currentWordIndex;
+  const endWord = Math.min(scriptWords.length, currentWordIndex + WORD_WINDOW);
+
+  // Get syllable range for this word window
+  const windowStart = startWord < scriptWords.length ? scriptWords[startWord].sylStart : scriptSyls.length;
+  const windowEnd = endWord < scriptWords.length ? scriptWords[endWord].sylStart : scriptSyls.length;
+
+  if (windowStart >= windowEnd) return null;
+
+  let bestScore = 0;
+  let bestPos = currentPos;
+  let bestWordIdx = -1;
+  let bestLine = -1;
+  let bestTry = 0;
+
+  // Helper: try matching a set of syllables against the word window
+  function tryMatch(syls, tryNum) {
+    const len = syls.length;
+    if (len < 2) return;
+    for (let p = windowStart; p <= windowEnd - len; p++) {
+      const slice = scriptSyls.slice(p, p + len).map(s => s.char);
+      const score = lcsLength(syls, slice);
+      const normalized = score / len;
+      const threshold = len < 10 ? 0.5 : 0.4;
+
+      if (normalized > bestScore && normalized > threshold) {
+        const midIdx = Math.min(p + Math.floor(len / 2), scriptSyls.length - 1);
+        const candidateWord = scriptSyls[midIdx]?.wordIndex ?? -1;
+        const candidateLine = scriptSyls[midIdx]?.lineIndex ?? -1;
+
+        // NEVER go backward
+        if (candidateWord < currentWordIndex) continue;
+
+        // Cap max jump (relaxed when stuck for a long time)
+        const maxJump = stuckMs > 8000 ? 10 : 5;
+        let realJump = 0;
+        for (let w = currentWordIndex; w < candidateWord; w++) {
+          if (w < scriptWords.length && scriptWords[w].sylEnd > scriptWords[w].sylStart) realJump++;
+        }
+        if (realJump > maxJump) continue;
+
+        // Require higher confidence when skipping words (prevents false matches on "de", "la", etc.)
+        // Relaxed when stuck — we need to recover
+        if (stuckMs < 8000 && realJump >= 2 && normalized < 0.55) continue;
+
+        bestScore = normalized;
+        bestPos = p + len;
+        bestWordIdx = candidateWord;
+        bestLine = candidateLine;
+        bestTry = tryNum;
+      }
+    }
+  }
+
+  // Try 1: Last 15 new syllables (what was just spoken)
+  const MATCH_LEN = 15;
+  tryMatch(newSyls.length > MATCH_LEN ? newSyls.slice(-MATCH_LEN) : newSyls, 1);
+
+  // Try 2: First 10 new syllables (right after last match)
+  if (bestScore < 0.5 && newSyls.length > 8) {
+    tryMatch(newSyls.slice(0, 10), 2);
+  }
+
+  // Try 3: Short match — last 6 syllables for quick response
+  if (bestScore < 0.5 && newSyls.length >= 4) {
+    tryMatch(newSyls.slice(-6), 3);
+  }
+
+  if (bestScore > 0.4 && bestWordIdx >= 0) {
+    // Consume aggressively — keep only 3 syllable overlap
+    lastConsumedSylCount = Math.max(0, allSyls.length - 3);
+    return { pos: bestPos, wordIndex: bestWordIdx, lineIndex: bestLine, confidence: bestScore, tryNum: bestTry };
+  }
+  return null;
+}
+
+// ---- Elapsed timer ----
+function pauseTimer() {
+  if (elapsedInterval) clearInterval(elapsedInterval);
+  elapsedInterval = null;
+}
+
+function resumeTimer() {
+  if (elapsedInterval) return;
+  elapsedInterval = setInterval(() => {
+    elapsedSeconds++;
+    updateTimerDisplay();
+  }, 1000);
+}
+
+function updateTimerDisplay() {
+  const el = document.getElementById('elapsed-timer');
+  if (el) {
+    el.textContent = formatTime(elapsedSeconds);
+  }
+  updatePace();
+}
+
+
+function formatTime(secs) {
+  const m = Math.floor(secs / 60);
+  const s = Math.floor(secs % 60);
+  return `${m}:${s.toString().padStart(2, '0')}`;
+}
+
+// ---- Word/read time estimation ----
+function getWordCount(text) {
+  return text.trim().split(/\s+/).filter(w => w.length > 0).length;
+}
+
+function getEstimatedReadTime(text) {
+  const words = getWordCount(text);
+  const wpm = settings.targetWpm || 140;
+  return Math.ceil(words / wpm * 60);
+}
+
+// ============================================================
+// CONTROL WINDOW
+// ============================================================
+function initControlWindow() {
+  applyTheme();
+  // Load saved language profile if settings don't have any
+  if (settings.scriptLangs.length === 0) {
+    try {
+      const saved = JSON.parse(localStorage.getItem('tp_lang_profile'));
+      if (Array.isArray(saved) && saved.length > 0) {
+        settings.scriptLangs = saved;
+        saveSettings();
+      }
+    } catch {}
+  }
+
+  bc = new BroadcastChannel('teleprompter');
+  bc.onmessage = (e) => {
+    const msg = e.data;
+    if (msg.type === 'lineClicked') {
+      currentLineIndex = msg.lineIndex;
+      currentWordIndex = findWordIndexForLine(msg.lineIndex);
+      currentAlignPos = findSyllablePosForLine(msg.lineIndex);
+      lastConsumedSylCount = 0; // Reset consumed syllables on re-anchor
+      lastMatchTime = Date.now(); // Reset stuck timer on re-anchor
+      // Use highlightWord in voice mode so word dimming updates correctly
+      if (isVoiceActive) {
+        broadcastMessage({ type: 'highlightWord', wordIndex: currentWordIndex, lineIndex: msg.lineIndex });
+      } else {
+        broadcastMessage({ type: 'scrollToLine', lineIndex: msg.lineIndex, smooth: false });
+      }
+      updateActiveChapter();
+    } else if (msg.type === 'toggleStartFromTP') {
+      toggleStart();
+    } else if (msg.type === 'endSessionFromTP') {
+      endSession();
+    } else if (msg.type === 'toggleVoiceFromTP') {
+      toggleVoiceMode();
+    } else if (msg.type === 'toggleMirrorFromTP') {
+      toggleSetting('mirrorMode', document.getElementById('btn-mirror'));
+    } else if (msg.type === 'resetFromTP') {
+      resetToTop();
+    } else if (msg.type === 'prevChapterFromTP') {
+      jumpToChapter(getCurrentChapterIndex() - 1);
+    } else if (msg.type === 'nextChapterFromTP') {
+      jumpToChapter(getCurrentChapterIndex() + 1);
+    } else if (msg.type === 'fontSizeFromTP') {
+      const newSize = Math.min(80, Math.max(16, settings.fontSize + msg.delta));
+      updateSetting('fontSize', newSize);
+      const slider = document.getElementById('slider-fontSize');
+      if (slider) slider.value = newSize;
+    } else if (msg.type === 'focusLineChanged') {
+      recordLineTransition(msg.lineIndex);
+      currentLineIndex = msg.lineIndex;
+      highlightCurrentLineInList();
+      updateActiveChapter();
+    } else if (msg.type === 'endOfScript') {
+      endSession();
+      const text = document.getElementById('status-text');
+      if (text) text.textContent = 'End of script';
+    }
+  };
+
+  document.body.innerHTML = buildControlUI();
+  bindControlEvents();
+  updateScriptInfo();
+  parseAndBroadcastScript();
+  updateButtonStates();
+}
+
+function findSyllablePosForLine(lineIndex) {
+  for (let i = 0; i < scriptSyllables.length; i++) {
+    if (scriptSyllables[i].lineIndex >= lineIndex) return i;
+  }
+  return 0;
+}
+
+function findWordIndexForLine(lineIndex) {
+  for (let i = 0; i < scriptWords.length; i++) {
+    if (scriptWords[i].lineIndex >= lineIndex) return i;
+  }
+  return 0;
+}
+
+function buildControlUI() {
+  const wordCount = getWordCount(scriptText);
+  const estTime = formatTime(getEstimatedReadTime(scriptText));
+
+  return `
+    <div class="control-window">
+      <div class="top-bar">
+        <h1>SyncPrompt <span class="version-tag">v0.6</span></h1>
+        <button onclick="openTeleprompterWindow()" class="primary" id="open-tp-btn">Open Teleprompter</button>
+        <span class="separator"></span>
+        <button onclick="toggleStart()" id="start-btn" disabled>Start</button>
+        <button onclick="endSession()" id="end-btn" class="end-session" disabled>End</button>
+        <button onclick="toggleManualScroll()" id="scroll-btn" disabled>Auto Scroll</button>
+        <span class="separator"></span>
+        <button onclick="toggleVoiceMode()" id="voice-mode-btn" class="voice-mode">Voice: OFF</button>
+        <span class="separator"></span>
+        <button onclick="resetToTop()">Reset</button>
+        <span class="separator"></span>
+        <button class="theme-toggle" onclick="toggleTheme()" id="theme-toggle-btn" title="Switch light/dark theme">${settings.theme === 'light' ? '&#9790;' : '&#9728;'}</button>
+        <button class="theme-toggle" onclick="showHelp()" title="Help &amp; shortcuts">?</button>
+      </div>
+
+      <div class="sidebar">
+        <div class="control-group">
+          <h3>Display</h3>
+          <div class="control-row">
+            <label>Font Size</label>
+            <input type="range" min="16" max="80" value="${settings.fontSize}" oninput="updateSetting('fontSize', +this.value)" id="slider-fontSize">
+            <span class="value" id="v-fontSize">${settings.fontSize}px</span>
+          </div>
+          <div class="control-row">
+            <label>Font</label>
+            <select onchange="updateSetting('fontFamily', this.value)">
+              ${['Arial', 'Georgia', 'Verdana', 'Tahoma', 'Courier New', 'Times New Roman', 'Helvetica', 'Trebuchet MS'].map(f =>
+                `<option value="${f}" ${settings.fontFamily === f ? 'selected' : ''}>${f}</option>`
+              ).join('')}
+            </select>
+          </div>
+          <div class="control-row">
+            <label>Bold</label>
+            <button class="toggle-btn ${settings.fontBold ? 'on' : ''}" onclick="toggleSetting('fontBold', this)">B</button>
+          </div>
+          <div class="control-row">
+            <label>Line Spacing</label>
+            <input type="range" min="1" max="3" step="0.1" value="${settings.lineHeight}" oninput="updateSetting('lineHeight', +this.value)">
+            <span class="value" id="v-lineHeight">${settings.lineHeight}</span>
+          </div>
+          <div class="control-row">
+            <label>H Margin</label>
+            <input type="range" min="0" max="300" value="${settings.marginH}" oninput="updateSetting('marginH', +this.value)">
+            <span class="value" id="v-marginH">${settings.marginH}px</span>
+          </div>
+          <div class="control-row">
+            <label>V Mask</label>
+            <input type="range" min="0" max="200" value="${settings.marginV}" oninput="updateSetting('marginV', +this.value)">
+            <span class="value" id="v-marginV">${settings.marginV}px</span>
+          </div>
+          <div class="control-row">
+            <label>Dim Opacity</label>
+            <input type="range" min="0" max="100" value="${Math.round(settings.dimOpacity * 100)}" oninput="updateSetting('dimOpacity', +this.value / 100)">
+            <span class="value" id="v-dimOpacity">${Math.round(settings.dimOpacity * 100)}%</span>
+          </div>
+          <div class="control-row">
+            <label>Focus Line</label>
+            <input type="range" min="10" max="60" value="${settings.focusLinePercent}" oninput="updateSetting('focusLinePercent', +this.value)">
+            <span class="value" id="v-focusLinePercent">${settings.focusLinePercent}%</span>
+          </div>
+        </div>
+
+        <div class="control-group">
+          <h3>Scroll</h3>
+          <div class="control-row">
+            <label>Speed</label>
+            <input type="range" min="1" max="100" value="${settings.scrollSpeed}" oninput="updateSetting('scrollSpeed', +this.value)">
+            <span class="value" id="v-scrollSpeed">${settings.scrollSpeed}</span>
+          </div>
+        </div>
+
+        <div class="control-group">
+          <h3>Options</h3>
+          <div class="control-row">
+            <label>Mirror</label>
+            <button class="toggle-btn ${settings.mirrorMode ? 'on' : ''}" id="btn-mirror" onclick="toggleSetting('mirrorMode', this)">Mirror</button>
+          </div>
+          <div class="control-row">
+            <label>Chapter dividers</label>
+            <button class="toggle-btn ${settings.showChapterDividers ? 'on' : ''}" onclick="toggleSetting('showChapterDividers', this)">Dividers</button>
+          </div>
+          <div class="control-row">
+            <label>Countdown</label>
+            <button class="toggle-btn ${settings.countdownEnabled ? 'on' : ''}" onclick="toggleSetting('countdownEnabled', this)">3-2-1</button>
+          </div>
+          <div class="control-row">
+            <label>Diagnostic</label>
+            <button class="toggle-btn ${settings.diagnosticMode ? 'on' : ''}" onclick="toggleSetting('diagnosticMode', this); toggleDiagnosticPanel()">Debug</button>
+          </div>
+          <div class="control-row">
+            <label>Pace/WPM</label>
+            <button class="toggle-btn ${settings.showPace ? 'on' : ''}" onclick="toggleSetting('showPace', this); togglePacePanel()">Pace</button>
+          </div>
+          <div class="control-row" style="${settings.showPace ? '' : 'display:none'}" id="target-wpm-row">
+            <label>Target WPM</label>
+            <input type="range" min="80" max="180" value="${settings.targetWpm}" oninput="updateSetting('targetWpm', +this.value)">
+            <span class="value" id="v-targetWpm">${settings.targetWpm}</span>
+          </div>
+        </div>
+
+        <div class="control-group">
+          <h3>Languages</h3>
+          <div class="lang-selector" id="lang-selector">
+            ${AVAILABLE_LANGS.map(l => `<label class="lang-chip"><input type="checkbox" value="${l.code}" ${settings.scriptLangs.includes(l.code) ? 'checked' : ''} onchange="toggleLang('${l.code}', this.checked)">${l.label}</label>`).join('')}
+          </div>
+          <div style="color:var(--text-dim);font-size:11px;margin-top:4px;">${settings.scriptLangs.length === 0 ? 'Auto-detect (ko/fr/en)' : settings.scriptLangs.map(l => AVAILABLE_LANGS.find(a => a.code === l)?.label).join(' + ')}</div>
+        </div>
+
+        <div class="control-group">
+          <h3>Chapters</h3>
+          <div class="chapter-list" id="chapter-list"></div>
+        </div>
+
+        <div class="control-group">
+          <h3>Script Lines</h3>
+          <div class="line-list" id="line-list" style="max-height:200px;overflow-y:auto;font-size:11px;"></div>
+        </div>
+      </div>
+
+      <div class="main-area">
+        <div class="script-editor">
+          <div class="editor-toolbar">
+            <button onclick="loadScriptFile()">Load .txt</button>
+            <button onclick="downloadScript()">Save .txt</button>
+            <button id="btn-export-captions" disabled onclick="showExportMenu(this)" title="Export captions after a session">Export Captions ▾</button>
+            <span class="info" id="script-info">${wordCount} words | Est. ${estTime} @ ${settings.targetWpm} wpm</span>
+            <span class="rehearsal-stats" id="rehearsal-stats"></span>
+          </div>
+          <textarea id="script-textarea" placeholder="Paste or type your script here...&#10;&#10;Use --- for section dividers&#10;Use ## Title for named chapters">${escapeHtml(scriptText)}</textarea>
+        </div>
+        <div class="diagnostic-panel ${settings.diagnosticMode ? 'visible' : ''}" id="diagnostic-panel">
+          <div class="diag-toolbar">
+            <button onclick="copyDiagLog()">Copy Log</button>
+            <button onclick="clearDiagLog()">Clear</button>
+            <span class="diag-stats" id="diag-stats"></span>
+          </div>
+          <div class="diag-log" id="diag-log">
+            <div class="diag-line info">Debug ready. Start voice follow to see output.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="status-bar">
+        <div class="status-item">
+          <span class="status-dot" id="status-dot"></span>
+          <span id="status-text">Ready</span>
+        </div>
+        <div class="status-item">
+          <span>Mic:</span>
+          <div class="mic-level"><div class="mic-level-fill" id="mic-level"></div></div>
+        </div>
+        <div class="status-item">
+          <span>Time:</span>
+          <span id="elapsed-timer">0:00</span>
+        </div>
+        <div class="status-item">
+          <span>Remaining:</span>
+          <span id="remaining-time">--</span>
+        </div>
+        <div class="pace-panel ${settings.showPace ? 'visible' : ''}" id="pace-panel">
+          <span>WPM: <span class="pace-value" id="wpm-value">--</span></span>
+          <span id="pace-label"></span>
+        </div>
+        <div class="status-item" style="margin-left:auto; color:var(--text-dim); font-size:10px; font-family:'JetBrains Mono',monospace; letter-spacing:-0.2px; opacity:0.7;">
+          Space: start/pause · E: end · V: voice · T: teleprompter · +/-: font · ←→: chapters · B: bookmark · F: fullscreen · M: mirror · R: reset
+        </div>
+      </div>
+    </div>
+
+    <div class="help-overlay" id="help-overlay" onclick="if(event.target===this)closeHelp()">
+      <div class="help-modal">
+        <button class="close-btn" onclick="closeHelp()">&times;</button>
+        <h2>SyncPrompt Help</h2>
+
+        <h3>About</h3>
+        <p>SyncPrompt was born out of necessity. As a non-native Korean speaker creating YouTube content in Korea, I needed a teleprompter that could actually follow my voice — not just scroll at a fixed speed and hope for the best. Existing tools couldn't handle the pace changes, the hesitations, or switching between languages mid-script. So I built one that does.</p>
+        <p>This is a free, open-source tool. If you find it useful, find bugs, or have ideas to make it better, I'd love to hear from you.</p>
+        <p style="font-size:11px;color:var(--text-dim);">Made by <strong>gaufre.dev</strong> — a Belgian dev building tools from Seoul.</p>
+
+        <h3>Browser Compatibility</h3>
+        <ul>
+          <li><strong>Safari (Mac) — Recommended.</strong> Built and tested on Safari. Voice recognition runs on-device (Apple Speech), works offline, most reliable.</li>
+          <li><strong>Chrome (Mac/Windows) — Works</strong>, but voice recognition uses Google servers (requires internet). May occasionally go silent during long sessions — the app detects this and auto-recovers.</li>
+          <li><strong>Edge (Windows) — Should work.</strong> Same engine as Chrome. Voice recognition uses Azure servers. Not extensively tested — feedback welcome.</li>
+          <li><strong>Firefox — Limited.</strong> No Web Speech API support. Auto-scroll works, but voice sync will not.</li>
+        </ul>
+        <p style="font-size:11px;color:var(--text-dim);">Built on macOS. Windows users: Chrome or Edge should work fine. If you hit issues, please report them.</p>
+
+        <h3>Getting Started</h3>
+        <p>Paste or type your script in the editor, then click <strong>Open Teleprompter</strong> to launch the display window. Drag it to your Elgato Prompter or second screen and press <kbd>F</kbd> for fullscreen.</p>
+
+        <h3>Voice Sync</h3>
+        <p><strong>Voice mode</strong> makes the teleprompter follow your voice instead of scrolling at a fixed speed. It listens through your microphone, recognizes what you're saying, and matches it to your script — automatically scrolling to keep up with where you are.</p>
+        <p>To use it: click <strong>Voice: OFF</strong> to enable voice mode (it turns green), then press <kbd>Space</kbd> to start. A 3-2-1 countdown plays, then the app begins listening. Speak naturally — the teleprompter will follow along. At chapter boundaries, use <kbd>←</kbd> <kbd>→</kbd> to jump manually.</p>
+        <p>Without voice mode, you can still use <strong>Auto Scroll</strong> for a fixed-speed scroll, or scroll manually.</p>
+
+        <h3>Script Formatting</h3>
+        <ul>
+          <li><code>## Title</code> — creates a named chapter</li>
+          <li><code>---</code> — creates a section divider</li>
+          <li><code>**bold text**</code> — displays bold on teleprompter</li>
+          <li><code>@mention</code> — displayed but skipped by voice matching</li>
+          <li><code>(톤 — calm)</code> — stage direction, shown dimmed, skipped by voice</li>
+        </ul>
+
+        <h3>Bookmarks</h3>
+        <p>Click the ★ next to any line to bookmark it. Press <kbd>B</kbd> to jump to the next bookmarked line. Great for marking tricky sections to practice.</p>
+
+        <h3>Caption Export (SRT/VTT)</h3>
+        <p>During any session (voice or manual scroll), SyncPrompt records when each line is reached. After ending a session with <kbd>E</kbd> or the End button, click <strong>Export Captions</strong> to download a timed subtitle file (SRT or VTT) for use in video editors like Premiere, DaVinci Resolve, CapCut, or YouTube Studio.</p>
+        <p>Each script line becomes one subtitle entry. Note lines and chapter markers are automatically skipped. SRT numbers are shown next to each line in the script list.</p>
+
+        <h3>Rehearsal Tracker</h3>
+        <p>Each time you run a voice session, your stats (match rate, WPM, coverage) are saved. You can see your practice count and best score in the editor toolbar.</p>
+
+        <h3>Keyboard Shortcuts</h3>
+        <ul>
+          <li><kbd>Space</kbd> — Start / Pause / Resume session</li>
+          <li><kbd>E</kbd> — End session (finalize SRT, log stats)</li>
+          <li><kbd>V</kbd> — Toggle voice mode</li>
+          <li><kbd>T</kbd> — Open teleprompter</li>
+          <li><kbd>←</kbd> <kbd>→</kbd> — Previous / Next chapter</li>
+          <li><kbd>↑</kbd> <kbd>↓</kbd> — Manual scroll nudge</li>
+          <li><kbd>+</kbd> <kbd>-</kbd> — Font size</li>
+          <li><kbd>B</kbd> — Jump to next bookmark</li>
+          <li><kbd>F</kbd> — Toggle fullscreen</li>
+          <li><kbd>M</kbd> — Toggle mirror mode</li>
+          <li><kbd>R</kbd> — Reset to top</li>
+          <li><kbd>?</kbd> — Open this help</li>
+          <li><kbd>Esc</kbd> — Close help / Cancel countdown</li>
+        </ul>
+
+        <h3>Open Source</h3>
+        <p>SyncPrompt is open source. Found a bug? Have a feature idea? Contributions and feedback are welcome on <strong>GitHub</strong>. Feel free to fork, improve, and submit a pull request.</p>
+      </div>
+    </div>
+  `;
+}
+
+function escapeHtml(s) {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+// ---- Help modal ----
+function showHelp() {
+  const el = document.getElementById('help-overlay');
+  if (el) el.classList.add('visible');
+}
+function closeHelp() {
+  const el = document.getElementById('help-overlay');
+  if (el) el.classList.remove('visible');
+}
+
+// ---- Bookmarks ----
+let bookmarkedLines = new Set();
+function loadBookmarks() {
+  try {
+    const key = 'tp_bookmarks_' + getScriptHash();
+    const saved = JSON.parse(localStorage.getItem(key));
+    if (Array.isArray(saved)) bookmarkedLines = new Set(saved);
+  } catch {}
+}
+function saveBookmarks() {
+  try {
+    const key = 'tp_bookmarks_' + getScriptHash();
+    localStorage.setItem(key, JSON.stringify([...bookmarkedLines]));
+  } catch {}
+}
+function toggleBookmark(lineIdx) {
+  if (bookmarkedLines.has(lineIdx)) bookmarkedLines.delete(lineIdx);
+  else bookmarkedLines.add(lineIdx);
+  saveBookmarks();
+  updateLineList();
+  broadcastMessage({ type: 'render' });
+}
+function jumpToNextBookmark() {
+  if (bookmarkedLines.size === 0) return;
+  const sorted = [...bookmarkedLines].sort((a, b) => a - b);
+  const next = sorted.find(l => l > currentLineIndex);
+  const target = next !== undefined ? next : sorted[0]; // wrap around
+  jumpToLine(target);
+}
+function getScriptHash() {
+  // Simple hash for identifying scripts by first 100 chars + length
+  const s = scriptText.substring(0, 100) + scriptText.length;
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = ((h << 5) - h + s.charCodeAt(i)) | 0;
+  return Math.abs(h).toString(36);
+}
+
+// ---- Rehearsal counter ----
+function getRehearsalKey() { return 'tp_rehearsal_' + getScriptHash(); }
+function loadRehearsalStats() {
+  try {
+    return JSON.parse(localStorage.getItem(getRehearsalKey())) || { count: 0, bestMatch: 0, bestWpm: 0, lastDate: null };
+  } catch { return { count: 0, bestMatch: 0, bestWpm: 0, lastDate: null }; }
+}
+function saveRehearsalSession(matchRate, wpm, coverage) {
+  const stats = loadRehearsalStats();
+  stats.count++;
+  stats.bestMatch = Math.max(stats.bestMatch, matchRate);
+  stats.bestWpm = Math.max(stats.bestWpm, wpm);
+  stats.lastDate = new Date().toLocaleDateString();
+  try { localStorage.setItem(getRehearsalKey(), JSON.stringify(stats)); } catch {}
+  updateRehearsalDisplay();
+}
+function updateRehearsalDisplay() {
+  const el = document.getElementById('rehearsal-stats');
+  if (!el) return;
+  const stats = loadRehearsalStats();
+  if (stats.count === 0) { el.textContent = ''; return; }
+  el.textContent = `Rehearsals: ${stats.count} | Best: ${stats.bestMatch}% match, ${stats.bestWpm} wpm`;
+}
+
+function bindControlEvents() {
+  const textarea = document.getElementById('script-textarea');
+  let debounce = null;
+  textarea.addEventListener('input', () => {
+    scriptText = textarea.value;
+    clearTimeout(debounce);
+    debounce = setTimeout(() => {
+      saveScript();
+      parseAndBroadcastScript();
+      updateScriptInfo();
+    }, 300);
+  });
+
+  document.addEventListener('keydown', handleKeyboard);
+
+  // Check periodically if teleprompter window is still open
+  setInterval(updateButtonStates, 1000);
+
+  // Close teleprompter window when control window closes
+  window.addEventListener('beforeunload', () => {
+    if (teleprompterWindow && !teleprompterWindow.closed) {
+      teleprompterWindow.close();
+    }
+  });
+}
+
+function updateButtonStates() {
+  const open = isTeleprompterOpen();
+  const startBtn = document.getElementById('start-btn');
+  const scrollBtn = document.getElementById('scroll-btn');
+  const openBtn = document.getElementById('open-tp-btn');
+
+  if (startBtn) startBtn.disabled = !open;
+  if (scrollBtn) scrollBtn.disabled = !open;
+  if (openBtn) {
+    openBtn.textContent = open ? 'Teleprompter Open' : 'Open Teleprompter';
+    if (open) {
+      openBtn.classList.remove('primary');
+    } else {
+      openBtn.classList.add('primary');
+      // If teleprompter was closed while running, stop everything
+      if (isStarted) stopEverything();
+    }
+  }
+}
+
+function updateScriptInfo() {
+  const el = document.getElementById('script-info');
+  if (!el) return;
+  const wc = getWordCount(scriptText);
+  const est = formatTime(getEstimatedReadTime(scriptText));
+  el.textContent = `${wc} words | Est. ${est} @ ${settings.targetWpm || 140} wpm`;
+}
+
+function parseAndBroadcastScript() {
+  chapters = parseChapters(scriptText);
+  scriptSyllables = buildSyllableIndex(chapters);
+  loadBookmarks();
+  updateChapterList();
+  updateRehearsalDisplay();
+  broadcastMessage({ type: 'script', scriptText, settings });
+}
+
+function updateChapterList() {
+  const el = document.getElementById('chapter-list');
+  if (!el) return;
+  el.innerHTML = chapters.map((ch, i) =>
+    `<div class="chapter-item ${i === 0 ? 'active' : ''}" onclick="jumpToChapter(${i})" data-chapter="${i}">${ch.title}</div>`
+  ).join('');
+  updateLineList();
+}
+
+function updateLineList() {
+  const el = document.getElementById('line-list');
+  if (!el) return;
+  let lineIdx = 0;
+  const items = [];
+  chapters.forEach(ch => {
+    ch.lines.forEach(line => {
+      const idx = lineIdx;
+      const preview = line.text.replace(/\*\*/g, '').substring(0, 55);
+      const starred = bookmarkedLines.has(idx) ? ' active' : '';
+      const srtNum = getSrtLineNumber(idx);
+      const srtLabel = srtNum ? `<span class="srt-num">⑊${srtNum}</span>` : '';
+      items.push(`<div class="line-list-item${isNoteLine(line.text) ? ' note' : ''}" data-line="${idx}" title="${escapeHtml(line.text)}"><span class="bookmark-star${starred}" onclick="event.stopPropagation(); toggleBookmark(${idx})">★</span>${srtLabel}<span class="line-num">${idx}</span><span class="line-text">${escapeHtml(preview)}</span><button class="go-btn" onclick="event.stopPropagation(); jumpToLine(${idx})">Go</button></div>`);
+      lineIdx++;
+    });
+  });
+  el.innerHTML = items.join('');
+  // Bind click to select
+  el.querySelectorAll('.line-list-item').forEach(item => {
+    item.addEventListener('click', () => selectLine(parseInt(item.dataset.line)));
+  });
+}
+
+function selectLine(lineIndex) {
+  const el = document.getElementById('line-list');
+  if (!el) return;
+  // Deselect previous
+  el.querySelectorAll('.line-list-item.selected').forEach(i => i.classList.remove('selected'));
+  const item = el.querySelector(`.line-list-item[data-line="${lineIndex}"]`);
+  if (item) item.classList.add('selected');
+}
+
+function jumpToLine(lineIndex) {
+  currentLineIndex = lineIndex;
+  currentWordIndex = findWordIndexForLine(lineIndex);
+  currentAlignPos = findSyllablePosForLine(lineIndex);
+  lastConsumedSylCount = 0;
+  lastMatchTime = Date.now();
+
+  if (isVoiceActive) {
+    broadcastMessage({ type: 'highlightWord', wordIndex: currentWordIndex, lineIndex: lineIndex });
+    // Switch recognition language to match the target line
+    const lang = scriptLineLangs[lineIndex];
+    if (lang) {
+      const neededLang = getRecogLangCode(lang);
+      if (neededLang !== currentRecogLang && isStarted) {
+        initSpeechRecognition(neededLang);
+      }
+    }
+  } else {
+    broadcastMessage({ type: 'scrollToLine', lineIndex: lineIndex, smooth: false });
+  }
+  updateActiveChapter();
+  highlightCurrentLineInList();
+  addStateLine(`Jump to line ${lineIndex} (word ${currentWordIndex})`);
+}
+
+function highlightCurrentLineInList() {
+  document.querySelectorAll('.line-list-item').forEach(el => {
+    el.classList.toggle('current', parseInt(el.dataset.line) === currentLineIndex);
+  });
+  // Scroll the current item into view
+  const current = document.querySelector('.line-list-item.current');
+  if (current) current.scrollIntoView({ block: 'nearest' });
+}
+
+function jumpToChapter(index) {
+  if (index < 0 || index >= chapters.length) return;
+  let lineIdx = 0;
+  for (let i = 0; i < index; i++) {
+    lineIdx += chapters[i].lines.length;
+  }
+  // Reuse jumpToLine for consistent behavior (voice-aware, language switch, etc.)
+  jumpToLine(lineIdx);
+
+  document.querySelectorAll('.chapter-item').forEach((el, i) => {
+    el.classList.toggle('active', i === index);
+  });
+}
+
+function updateSetting(key, value) {
+  settings[key] = value;
+  const valEl = document.getElementById(`v-${key}`);
+  if (valEl) {
+    if (key === 'dimOpacity') valEl.textContent = Math.round(value * 100) + '%';
+    else if (key === 'focusLinePercent') valEl.textContent = value + '%';
+    else if (key.startsWith('margin')) valEl.textContent = value + 'px';
+    else if (key === 'fontSize') valEl.textContent = value + 'px';
+    else valEl.textContent = value;
+  }
+  // Update live scroll speed if scrolling
+  if (key === 'scrollSpeed' && isScrolling) {
+    manualScrollSpeed = value;
+    broadcastMessage({ type: 'updateSpeed', speed: value });
+  }
+  // Refresh estimated time when target WPM changes
+  if (key === 'targetWpm') updateScriptInfo();
+  saveSettings();
+}
+
+function toggleSetting(key, btnEl) {
+  settings[key] = !settings[key];
+  if (btnEl) btnEl.classList.toggle('on', settings[key]);
+  saveSettings();
+}
+
+function toggleDiagnosticPanel() {
+  const el = document.getElementById('diagnostic-panel');
+  if (el) el.classList.toggle('visible', settings.diagnosticMode);
+}
+
+function toggleTheme() {
+  settings.theme = settings.theme === 'dark' ? 'light' : 'dark';
+  saveSettings();
+  applyTheme();
+  const btn = document.getElementById('theme-toggle-btn');
+  if (btn) btn.innerHTML = settings.theme === 'light' ? '&#9790;' : '&#9728;';
+}
+
+function applyTheme() {
+  document.body.classList.remove('theme-dark', 'theme-light');
+  document.body.classList.add('theme-' + (settings.theme || 'dark'));
+}
+
+function togglePacePanel() {
+  const el = document.getElementById('pace-panel');
+  if (el) el.classList.toggle('visible', settings.showPace);
+  const row = document.getElementById('target-wpm-row');
+  if (row) row.style.display = settings.showPace ? '' : 'none';
+}
+
+function toggleLang(code, checked) {
+  if (!Array.isArray(settings.scriptLangs)) settings.scriptLangs = [];
+  if (checked) {
+    if (!settings.scriptLangs.includes(code)) settings.scriptLangs.push(code);
+  } else {
+    settings.scriptLangs = settings.scriptLangs.filter(l => l !== code);
+  }
+  saveSettings();
+  // Re-detect languages and rebuild syllable index
+  parseAndBroadcastScript();
+  // Update the hint text
+  const hint = document.querySelector('.lang-selector + div');
+  if (hint) {
+    hint.textContent = settings.scriptLangs.length === 0
+      ? 'Auto-detect (ko/fr/en)'
+      : settings.scriptLangs.map(l => AVAILABLE_LANGS.find(a => a.code === l)?.label).join(' + ');
+  }
+  // Save language profile
+  localStorage.setItem('tp_lang_profile', JSON.stringify(settings.scriptLangs));
+}
+
+function updatePace() {
+  if (!settings.showPace) return;
+  const wpmEl = document.getElementById('wpm-value');
+  const paceEl = document.getElementById('pace-label');
+  if (!wpmEl || !paceEl) return;
+
+  if (elapsedSeconds < 3 || currentWordIndex < 2) {
+    wpmEl.textContent = '--';
+    paceEl.innerHTML = '';
+    return;
+  }
+
+  const wordsSpoken = currentWordIndex - (sessionStats.startWordIndex || 0);
+  if (wordsSpoken < 2) { wpmEl.textContent = '--'; paceEl.innerHTML = ''; return; }
+  const wpm = Math.round((wordsSpoken / elapsedSeconds) * 60);
+  wpmEl.textContent = wpm;
+
+  const target = settings.targetWpm || 140;
+  const ratio = wpm / target;
+  let label, cls;
+  if (ratio < 0.8) { label = 'Slow'; cls = 'slow'; }
+  else if (ratio > 1.2) { label = 'Fast'; cls = 'fast'; }
+  else { label = 'Good'; cls = 'good'; }
+  paceEl.innerHTML = `<span class="pace-indicator ${cls}">${label}</span> <span style="color:var(--text-dim);font-size:10px;">target: ${target}</span>`;
+}
+
+// ---- File load/save ----
+function loadScriptFile() {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.txt,.md';
+  input.onchange = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      scriptText = ev.target.result;
+      document.getElementById('script-textarea').value = scriptText;
+      saveScript();
+      parseAndBroadcastScript();
+      updateScriptInfo();
+    };
+    reader.readAsText(file);
+  };
+  input.click();
+}
+
+function downloadScript() {
+  const blob = new Blob([scriptText], { type: 'text/plain' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'script.txt';
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
+// ---- SRT/VTT Caption Export ----
+function getSrtLineNumber(lineIndex) {
+  let srtNum = 0;
+  let idx = 0;
+  for (const ch of chapters) {
+    for (const line of ch.lines) {
+      if (!isNoteLine(line.text)) {
+        srtNum++;
+        if (idx === lineIndex) return srtNum;
+      } else {
+        if (idx === lineIndex) return null;
+      }
+      idx++;
+    }
+  }
+  return null;
+}
+
+function formatSrtTime(ms) {
+  const h = Math.floor(ms / 3600000);
+  const m = Math.floor((ms % 3600000) / 60000);
+  const s = Math.floor((ms % 60000) / 1000);
+  const millis = Math.floor(ms % 1000);
+  return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')},${String(millis).padStart(3,'0')}`;
+}
+
+function buildCaptionEntries() {
+  if (captionTimeline.length === 0) return [];
+  const sessionEndMs = captionSessionEndMs || (Date.now() - sessionStats.startTime);
+  const allLines = chapters.flatMap(ch => ch.lines);
+  const entries = [];
+
+  for (let i = 0; i < captionTimeline.length; i++) {
+    const { lineIndex, ms } = captionTimeline[i];
+    const endMs = i < captionTimeline.length - 1 ? captionTimeline[i + 1].ms : sessionEndMs;
+    if (lineIndex >= allLines.length) continue;
+    const lineText = allLines[lineIndex].text;
+    if (isNoteLine(lineText)) continue;
+
+    const cleanText = lineText.replace(/\*\*/g, '').replace(/[\u200B-\u200F\u202A-\u202E\uFEFF]/g, '');
+    const durationMs = endMs - ms;
+    if (durationMs < 200 && entries.length > 0) {
+      entries[entries.length - 1].endMs = endMs;
+      continue;
+    }
+    entries.push({ text: cleanText, startMs: ms, endMs });
+  }
+  // Enforce minimum 500ms duration
+  entries.forEach(e => { if (e.endMs - e.startMs < 500) e.endMs = e.startMs + 500; });
+  return entries;
+}
+
+function exportCaptions(format) {
+  const entries = buildCaptionEntries();
+  if (entries.length === 0) { alert('No caption data recorded. Run a session first.'); return; }
+
+  let output = '';
+  if (format === 'vtt') {
+    output = 'WEBVTT\n\n';
+    entries.forEach((e, i) => {
+      const start = formatSrtTime(e.startMs).replace(',', '.');
+      const end = formatSrtTime(e.endMs).replace(',', '.');
+      output += `${i + 1}\n${start} --> ${end}\n${e.text}\n\n`;
+    });
+  } else {
+    entries.forEach((e, i) => {
+      output += `${i + 1}\n${formatSrtTime(e.startMs)} --> ${formatSrtTime(e.endMs)}\n${e.text}\n\n`;
+    });
+  }
+
+  const blob = new Blob([output], { type: 'text/plain' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `captions.${format}`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  addStateLine(`Exported ${entries.length} captions as ${format.toUpperCase()}`);
+}
+
+function showExportMenu(btn) {
+  // Remove existing menu if any
+  const existing = document.querySelector('.export-menu');
+  if (existing) { existing.remove(); return; }
+  const menu = document.createElement('div');
+  menu.className = 'export-menu';
+  menu.innerHTML = `<button onclick="event.stopPropagation(); exportCaptions('srt'); this.parentElement.remove()">SRT (Recommended)</button><button onclick="event.stopPropagation(); exportCaptions('vtt'); this.parentElement.remove()">VTT (Web)</button>`;
+  btn.style.position = 'relative';
+  btn.appendChild(menu);
+  // Close on outside click
+  setTimeout(() => {
+    const closer = (e) => { if (!menu.contains(e.target) && e.target !== btn) { menu.remove(); document.removeEventListener('click', closer); } };
+    document.addEventListener('click', closer);
+  }, 10);
+}
+
+// ---- Teleprompter window ----
+function openTeleprompterWindow() {
+  if (isTeleprompterOpen()) {
+    teleprompterWindow.focus();
+    return;
+  }
+  const url = location.origin + location.pathname + '?teleprompter=1';
+  teleprompterWindow = window.open(url, 'teleprompter', 'width=1024,height=600');
+  setTimeout(() => {
+    updateButtonStates();
+    broadcastTpState();
+    // If a chapter/line was selected before opening, jump there
+    if (currentLineIndex > 0) {
+      broadcastMessage({ type: 'scrollToLine', lineIndex: currentLineIndex, smooth: false });
+    }
+  }, 500);
+}
+
+// ---- Start / Pause / Resume / End (session lifecycle) ----
+function toggleStart() {
+  if (!isTeleprompterOpen()) return;
+
+  if (!isStarted) {
+    // Start new session
+    if (teleprompterWindow && !teleprompterWindow.closed) {
+      teleprompterWindow.focus();
+    }
+    if (settings.countdownEnabled) {
+      startCountdown(() => startSession());
+    } else {
+      startSession();
+    }
+  } else if (!isPaused) {
+    // Pause running session
+    pauseSession();
+  } else {
+    // Resume paused session
+    resumeSession();
+  }
+}
+
+function endSession() {
+  if (!isStarted) return;
+  captionSessionEndMs = Date.now() - sessionStats.startTime;
+  if (isVoiceActive) logSessionSummary();
+  addStateLine('End session');
+  isStarted = false;
+  isPaused = false;
+  isScrolling = false;
+  const btn = document.getElementById('start-btn');
+  btn.textContent = 'Start';
+  btn.classList.remove('active');
+  const endBtn = document.getElementById('end-btn');
+  if (endBtn) endBtn.disabled = true;
+
+  const scrollBtn = document.getElementById('scroll-btn');
+  scrollBtn.textContent = 'Auto Scroll';
+  scrollBtn.classList.remove('active');
+
+  pauseTimer();
+  stopSpeechRecognition();
+  stopMicrophone();
+
+  broadcastMessage({ type: 'stopScroll' });
+
+  const dot = document.getElementById('status-dot');
+  const text = document.getElementById('status-text');
+  if (dot) dot.classList.remove('listening');
+  if (text) text.textContent = 'Session ended';
+  broadcastMessage({ type: 'countdown', text: null }); // Clear PAUSED overlay
+  broadcastTpState();
+
+  // Enable caption export if we have recorded data
+  const exportBtn = document.getElementById('btn-export-captions');
+  if (exportBtn) exportBtn.disabled = captionTimeline.length === 0;
+}
+
+function pauseSession() {
+  isPaused = true;
+  addStateLine('Pause session');
+  const btn = document.getElementById('start-btn');
+  btn.textContent = 'Resume';
+
+  // Stop recognition and scroll but keep timer running (real time for SRT sync)
+  stopSpeechRecognition();
+  if (isScrolling) {
+    isScrolling = false;
+    broadcastMessage({ type: 'stopScroll' });
+  }
+
+  const scrollBtn = document.getElementById('scroll-btn');
+  if (scrollBtn) { scrollBtn.textContent = 'Auto Scroll'; scrollBtn.classList.remove('active'); }
+
+  const dot = document.getElementById('status-dot');
+  const text = document.getElementById('status-text');
+  if (dot) dot.classList.remove('listening');
+  if (text) text.textContent = 'Paused';
+  broadcastMessage({ type: 'countdown', text: 'PAUSED' });
+  broadcastTpState();
+}
+
+function resumeSession() {
+  isPaused = false;
+  addStateLine('Resume session');
+  const btn = document.getElementById('start-btn');
+  btn.textContent = 'Pause';
+  btn.classList.add('active');
+  lastMatchTime = Date.now();
+
+  if (isVoiceActive) {
+    const startLang = scriptLineLangs[currentLineIndex] || 'ko';
+    initSpeechRecognition(getRecogLangCode(startLang));
+  } else {
+    // Resume manual scroll
+    isScrolling = true;
+    manualScrollSpeed = settings.scrollSpeed;
+    broadcastMessage({ type: 'startManualScroll', speed: manualScrollSpeed });
+    const scrollBtn = document.getElementById('scroll-btn');
+    scrollBtn.textContent = 'Stop Scroll';
+    scrollBtn.classList.add('active');
+  }
+
+  const dot = document.getElementById('status-dot');
+  const text = document.getElementById('status-text');
+  if (isVoiceActive) {
+    if (dot) dot.classList.add('listening');
+    if (text) text.textContent = 'Listening...';
+  } else {
+    if (text) text.textContent = 'Scrolling';
+  }
+  broadcastMessage({ type: 'countdown', text: null }); // Clear PAUSED overlay
+  broadcastTpState();
+}
+
+function broadcastTpState() {
+  broadcastMessage({ type: 'tpState', started: isStarted, voice: isVoiceActive, scrolling: isScrolling });
+}
+
+function startSession() {
+  isStarted = true;
+  isPaused = false;
+  captionTimeline = [];
+  captionSessionEndMs = 0;
+  addStateLine(`Start session (voice=${isVoiceActive}, scroll=${isScrolling})`);
+  resetSessionStats();
+  const btn = document.getElementById('start-btn');
+  btn.textContent = 'Pause';
+  btn.classList.add('active');
+  const endBtn = document.getElementById('end-btn');
+  if (endBtn) endBtn.disabled = false;
+  // Disable export button during session
+  const exportBtn = document.getElementById('btn-export-captions');
+  if (exportBtn) exportBtn.disabled = true;
+
+  resumeTimer();
+  lastMatchTime = Date.now();
+  diagLastMatchLine = -1;
+  diagInterimCount = 0;
+  // Record initial line for SRT (so first spoken line is captured)
+  recordLineTransition(currentLineIndex);
+
+  // If voice mode is on, start recognition with appropriate language
+  if (isVoiceActive) {
+    const startLang = scriptLineLangs[currentLineIndex] || 'ko';
+    initSpeechRecognition(getRecogLangCode(startLang));
+  } else {
+    // Start manual scroll
+    isScrolling = true;
+    manualScrollSpeed = settings.scrollSpeed;
+    broadcastMessage({ type: 'startManualScroll', speed: manualScrollSpeed });
+    const scrollBtn = document.getElementById('scroll-btn');
+    scrollBtn.textContent = 'Stop Scroll';
+    scrollBtn.classList.add('active');
+  }
+
+  const dot = document.getElementById('status-dot');
+  const text = document.getElementById('status-text');
+  if (isVoiceActive) {
+    dot.classList.add('listening');
+    text.textContent = 'Listening...';
+  } else {
+    text.textContent = 'Scrolling';
+  }
+
+  broadcastTpState();
+}
+
+function stopSession() {
+  // Legacy wrapper — calls endSession for backward compatibility (endOfScript, etc.)
+  endSession();
+}
+
+function stopEverything() {
+  stopSession();
+  isVoiceActive = false;
+  const vmBtn = document.getElementById('voice-mode-btn');
+  if (vmBtn) {
+    vmBtn.textContent = 'Voice: OFF';
+    vmBtn.classList.remove('on');
+  }
+}
+
+// ---- Voice mode toggle (mode switch, not start/stop) ----
+function toggleVoiceMode() {
+  isVoiceActive = !isVoiceActive;
+  addStateLine(`Voice mode ${isVoiceActive ? 'ON' : 'OFF'} (isStarted=${isStarted})`);
+  const btn = document.getElementById('voice-mode-btn');
+  btn.textContent = isVoiceActive ? 'Voice: ON' : 'Voice: OFF';
+  btn.classList.toggle('on', isVoiceActive);
+
+  if (isVoiceActive) {
+    initMicrophone();
+    if (isStarted) {
+      // Session already running — start voice recognition now and stop manual scroll
+      isScrolling = false;
+      broadcastMessage({ type: 'stopScroll' });
+      const scrollBtn = document.getElementById('scroll-btn');
+      if (scrollBtn) { scrollBtn.textContent = 'Auto Scroll'; scrollBtn.classList.remove('active'); }
+      const startLang = scriptLineLangs[currentLineIndex] || 'ko';
+      initSpeechRecognition(getRecogLangCode(startLang));
+      const dot = document.getElementById('status-dot');
+      const text = document.getElementById('status-text');
+      if (dot) dot.classList.add('listening');
+      if (text) text.textContent = 'Listening...';
+      addDiagLine('Voice mode enabled mid-session — recognition started', 'match');
+    } else {
+      addDiagLine('Voice mode enabled - press Start to begin', 'match');
+    }
+  } else {
+    addDiagLine('Voice mode disabled', '');
+    // If session is running, switch to manual scroll
+    if (isStarted) {
+      stopSpeechRecognition();
+      stopMicrophone();
+      isScrolling = true;
+      manualScrollSpeed = settings.scrollSpeed;
+      broadcastMessage({ type: 'startManualScroll', speed: manualScrollSpeed });
+      const text = document.getElementById('status-text');
+      const dot = document.getElementById('status-dot');
+      if (text) text.textContent = 'Scrolling';
+      if (dot) dot.classList.remove('listening');
+    }
+  }
+  broadcastTpState();
+}
+
+// ---- Manual scroll toggle ----
+function toggleManualScroll() {
+  addStateLine(`Toggle scroll (isStarted=${isStarted}, isScrolling=${isScrolling})`);
+  if (!isTeleprompterOpen()) return;
+
+  if (!isStarted) {
+    // Start session in manual scroll mode
+    isVoiceActive = false;
+    const vmBtn = document.getElementById('voice-mode-btn');
+    vmBtn.textContent = 'Voice: OFF';
+    vmBtn.classList.remove('on');
+
+    if (settings.countdownEnabled) {
+      startCountdown(() => {
+        startSession();
+      });
+    } else {
+      startSession();
+    }
+  } else {
+    // Toggle scroll while running
+    isScrolling = !isScrolling;
+    const btn = document.getElementById('scroll-btn');
+    if (isScrolling) {
+      btn.textContent = 'Stop Scroll';
+      btn.classList.add('active');
+      manualScrollSpeed = settings.scrollSpeed;
+      broadcastMessage({ type: 'startManualScroll', speed: manualScrollSpeed });
+    } else {
+      btn.textContent = 'Auto Scroll';
+      btn.classList.remove('active');
+      broadcastMessage({ type: 'stopScroll' });
+    }
+    broadcastTpState();
+  }
+}
+
+// ---- Countdown ----
+async function startCountdown(callback) {
+  countdownCancelled = false;
+
+  // Get mic permission FIRST if voice mode is on (before showing countdown)
+  if (isVoiceActive) {
+    broadcastMessage({ type: 'countdown', text: 'Mic...' });
+    const micOk = await initMicrophone();
+    if (!micOk || countdownCancelled) {
+      broadcastMessage({ type: 'countdown', text: null });
+      return;
+    }
+  }
+
+  let count = 3;
+  broadcastMessage({ type: 'countdown', text: String(count) });
+
+  countdownTimer = setInterval(() => {
+    count--;
+    if (count > 0) {
+      broadcastMessage({ type: 'countdown', text: String(count) });
+    } else if (count === 0) {
+      broadcastMessage({ type: 'countdown', text: 'GO' });
+    } else {
+      clearInterval(countdownTimer);
+      broadcastMessage({ type: 'countdown', text: null });
+      callback();
+    }
+  }, 1000);
+}
+
+function cancelCountdown() {
+  countdownCancelled = true;
+  if (countdownTimer) {
+    clearInterval(countdownTimer);
+    countdownTimer = null;
+  }
+  broadcastMessage({ type: 'countdown', text: null });
+}
+
+// ---- Microphone level ----
+let audioCtx, analyser, micStream;
+let micInitPromise = null;
+
+function stopMicrophone() {
+  if (micStream) {
+    micStream.getTracks().forEach(track => track.stop());
+    micStream = null;
+  }
+  if (audioCtx) {
+    audioCtx.close().catch(() => {});
+    audioCtx = null;
+    analyser = null;
+  }
+  micInitPromise = null;
+}
+
+function initMicrophone() {
+  if (micStream) return Promise.resolve(true);
+  if (micInitPromise) return micInitPromise;
+  micInitPromise = navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
+    micStream = stream;
+    audioCtx = new AudioContext();
+    analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 256;
+    const source = audioCtx.createMediaStreamSource(stream);
+    source.connect(analyser);
+    updateMicLevel();
+    micInitPromise = null; // Clear so fresh request is made if mic is stopped & restarted
+    return true;
+  }).catch(err => {
+    micInitPromise = null;
+    const dot = document.getElementById('status-dot');
+    const text = document.getElementById('status-text');
+    if (dot) dot.classList.add('error');
+    if (text) text.textContent = 'Mic denied - check browser permissions';
+    addDiagLine('ERROR: Microphone access denied - ' + err.message, 'nomatch');
+    return false;
+  });
+  return micInitPromise;
+}
+
+function updateMicLevel() {
+  if (!analyser) return;
+  const data = new Uint8Array(analyser.frequencyBinCount);
+  analyser.getByteFrequencyData(data);
+  const avg = data.reduce((a, b) => a + b, 0) / data.length;
+  const level = Math.min(100, avg * 1.5);
+  const fill = document.getElementById('mic-level');
+  if (fill) fill.style.width = level + '%';
+  requestAnimationFrame(updateMicLevel);
+}
+
+// ---- Speech Recognition ----
+function initSpeechRecognition(lang) {
+  lang = lang || currentRecogLang || 'ko-KR';
+  currentRecogLang = lang;
+
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRecognition) {
+    addDiagLine('ERROR: Web Speech API not supported in this browser', 'nomatch');
+    addDiagLine('Try using Chrome or Edge', 'nomatch');
+    return;
+  }
+
+  if (recognition) {
+    isLanguageSwitching = true;
+    try { recognition.stop(); } catch {}
+  }
+
+  recognition = new SpeechRecognition();
+  recognition.lang = lang;
+  recognition.continuous = true;
+  recognition.interimResults = true;
+  recognition.maxAlternatives = 1;
+
+  recognition.onresult = (event) => {
+    // Accumulate ALL results (not just from resultIndex)
+    // so we always have the full transcript for consumed-syllable tracking
+    let fullText = '';
+    let hasFinal = false;
+    for (let i = 0; i < event.results.length; i++) {
+      const t = event.results[i][0].transcript;
+      fullText += t;
+      if (event.results[i].isFinal) hasFinal = true;
+    }
+
+    const transcript = fullText.trim();
+    if (transcript.length > 0) {
+      // Track for stale recognition watchdog (Chrome goes silent after FINAL)
+      if (transcript !== lastTranscriptContent) {
+        lastTranscriptContent = transcript;
+        lastTranscriptTime = Date.now();
+      }
+      processTranscription(transcript, hasFinal);
+    }
+  };
+
+  let hadNetworkError = false;
+
+  recognition.onerror = (event) => {
+    addDiagLine(`Speech error: ${event.error}`, 'nomatch');
+    if (event.error === 'network') {
+      hadNetworkError = true;
+      const text = document.getElementById('status-text');
+      if (text) text.textContent = 'Speech API network error';
+      addDiagLine('Web Speech API could not connect to Google servers.', 'nomatch');
+      addDiagLine('Possible fixes:', 'nomatch');
+      addDiagLine('  1. Check your internet connection', 'nomatch');
+      addDiagLine('  2. Try opening chrome://settings/content/siteDetails?site=http://localhost:8080 and allow microphone', 'nomatch');
+      addDiagLine('  3. Try using Safari instead (uses on-device Apple speech recognition)', 'nomatch');
+      // Don't retry on network errors — stop cleanly
+      isVoiceActive = false;
+      stopSession();
+      const vmBtn = document.getElementById('voice-mode-btn');
+      if (vmBtn) { vmBtn.textContent = 'Voice: OFF'; vmBtn.classList.remove('on'); }
+    }
+    if (event.error === 'not-allowed') {
+      const text = document.getElementById('status-text');
+      if (text) text.textContent = 'Mic permission denied';
+      addDiagLine('Microphone permission was denied. Check browser settings.', 'nomatch');
+    }
+    if (event.error === 'aborted') {
+      // Normal when stopping recognition, ignore
+    }
+  };
+
+  recognition.onend = () => {
+    // Skip restart if we're switching languages (new recognition already running)
+    if (isLanguageSwitching) {
+      isLanguageSwitching = false;
+      return;
+    }
+    // Only auto-restart for timeout — NOT after network errors
+    if (isVoiceActive && isStarted && !hadNetworkError) {
+      sessionStats.recognitionRestarts++;
+      addDiagLine(`Recognition restarted (${currentRecogLang})`, '');
+      lastConsumedSylCount = 0; // Reset — new recognition session starts fresh
+      setTimeout(() => {
+        try { recognition.start(); } catch {}
+      }, 200);
+    }
+  };
+
+  try {
+    hadNetworkError = false;
+    recognition.start();
+    startStaleWatchdog();
+    addDiagLine(`Speech recognition started (${lang})`, 'match');
+  } catch (err) {
+    addDiagLine('Failed to start recognition: ' + err.message, 'nomatch');
+  }
+}
+
+function stopSpeechRecognition() {
+  stopStaleWatchdog();
+  if (recognition) {
+    try { recognition.stop(); } catch {}
+    recognition = null;
+  }
+}
+
+// Chrome stale recognition watchdog: Chrome's Web Speech API sometimes goes silent
+// (no new transcription content) while technically still running. This watchdog
+// detects that and force-restarts recognition.
+function startStaleWatchdog() {
+  stopStaleWatchdog();
+  lastTranscriptTime = Date.now();
+  lastTranscriptContent = '';
+  staleWatchdogTimer = setInterval(() => {
+    if (!isVoiceActive || !isStarted || !recognition) return;
+    const silentMs = Date.now() - lastTranscriptTime;
+    // If no new transcript content for 7 seconds, force-restart
+    if (silentMs > 7000) {
+      sessionStats.watchdogRestarts++;
+      addDiagLine(`Stale recognition detected (${(silentMs / 1000).toFixed(0)}s silent) — restarting`, 'warn');
+      addStateLine(`Watchdog: restarting recognition (${(silentMs / 1000).toFixed(0)}s silent)`);
+      lastTranscriptContent = '';
+      lastTranscriptTime = Date.now();
+      lastConsumedSylCount = 0;
+      lastMatchTime = Date.now(); // Reset so early language switch doesn't fire on stale data
+      try { recognition.stop(); } catch {}
+      // Don't set isLanguageSwitching — let onend handle restart naturally
+    }
+  }, 3000);
+}
+
+function stopStaleWatchdog() {
+  if (staleWatchdogTimer) {
+    clearInterval(staleWatchdogTimer);
+    staleWatchdogTimer = null;
+  }
+}
+
+// ---- Language switching ----
+function getRecogLangCode(lang) {
+  const found = AVAILABLE_LANGS.find(l => l.code === lang);
+  return found ? found.recog : 'en-US';
+}
+
+function checkLanguageSwitch(currentWord) {
+  if (currentWord >= scriptWords.length - 1) return;
+
+  // Look at the next few words to determine upcoming language
+  const lookAhead = 3;
+  let nextLang = null;
+  for (let i = currentWord + 1; i < Math.min(currentWord + lookAhead + 1, scriptWords.length); i++) {
+    // Find the first word that has matchable characters (skip empty/punctuation)
+    if (scriptWords[i].sylEnd > scriptWords[i].sylStart) {
+      nextLang = scriptWords[i].lang;
+      break;
+    }
+  }
+  if (!nextLang) return;
+
+  const neededLang = getRecogLangCode(nextLang);
+  if (neededLang !== currentRecogLang) {
+    sessionStats.langSwitches++;
+    addDiagLine(`Language switch: ${currentRecogLang} → ${neededLang}`, 'info');
+    lastConsumedSylCount = 0; // Reset consumed — new recognition session
+    lastLanguageSwitchTime = Date.now();
+    initSpeechRecognition(neededLang);
+  }
+}
+
+let diagInterimCount = 0;
+function processTranscription(transcript, isFinal) {
+  // Only log every 5th interim to reduce noise
+  diagInterimCount++;
+  if (isFinal || diagInterimCount % 5 === 0) {
+    const shortTranscript = transcript.length > 60 ? '...' + transcript.slice(-60) : transcript;
+    addDiagLine(`${isFinal ? 'FINAL' : 'interim'}: "${shortTranscript}"`, '');
+  }
+
+  const timeSinceMatch = Date.now() - lastMatchTime;
+  const match = findBestMatch(transcript, scriptSyllables, currentAlignPos, timeSinceMatch);
+  if (match) {
+    sessionStats.matchCount++;
+    sessionStats.uniqueWordsMatched.add(match.wordIndex);
+    sessionStats.totalConfidence += match.confidence;
+    sessionStats.highestWordReached = Math.max(sessionStats.highestWordReached, match.wordIndex + 1);
+    const isNewWord = match.wordIndex !== currentWordIndex;
+    const isNewLine = match.lineIndex !== diagLastMatchLine;
+    currentAlignPos = match.pos;
+    currentWordIndex = match.wordIndex;
+    currentLineIndex = match.lineIndex;
+    lastMatchTime = Date.now();
+    diagLastMatchLine = match.lineIndex;
+
+    if (isNewWord) {
+      const wordText = scriptWords[match.wordIndex]?.text ?? '?';
+      addDiagLine(`>>> WORD ${match.wordIndex}: "${wordText}" line ${match.lineIndex} (conf: ${(match.confidence * 100).toFixed(0)}%, try${match.tryNum})`, 'match');
+    }
+
+    // Send word highlight to teleprompter
+    broadcastMessage({ type: 'highlightWord', wordIndex: match.wordIndex, lineIndex: match.lineIndex });
+    updateRemainingTime(match.lineIndex);
+    if (isNewLine) { recordLineTransition(match.lineIndex); updateActiveChapter(); highlightCurrentLineInList(); }
+
+    // End of script — matched last word
+    if (match.wordIndex >= scriptWords.length - 1) {
+      addDiagLine(`=== END OF SCRIPT === (${formatTime(elapsedSeconds)})`, 'info');
+      const text = document.getElementById('status-text');
+      if (text) text.textContent = `Done! (${formatTime(elapsedSeconds)})`;
+    }
+
+    // Check if upcoming words need a different recognition language
+    checkLanguageSwitch(match.wordIndex);
+  } else {
+    const currentLine = currentAlignPos < scriptSyllables.length
+      ? scriptSyllables[currentAlignPos]?.lineIndex ?? currentLineIndex : currentLineIndex;
+    const allHeardSyls = extractSyllables(transcript);
+    const newSylCount = allHeardSyls.length - lastConsumedSylCount;
+    const stuckSec = (timeSinceMatch / 1000).toFixed(0);
+
+    // Show what we're searching for vs where we're looking
+    const newKo = allHeardSyls.slice(lastConsumedSylCount);
+    const heardFirst = newKo.slice(0, 10).join('');
+    const heardLast = newKo.slice(-10).join('');
+    const scriptSnippet = scriptSyllables.slice(currentAlignPos, currentAlignPos + 15).map(s => s.char).join('');
+    addDiagLine(`No match (word ${currentWordIndex}, line ${currentLine}, ${stuckSec}s stuck, ${newSylCount} new syls)`, 'nomatch');
+    addDiagLine(`  heard: "${heardFirst}…${heardLast}" | script: "${scriptSnippet}"`, 'nomatch');
+
+    // Early language switch: if stuck 1.5s+ and a language change is coming within next few words, switch now
+    // This prevents the recognizer from producing garbage when you've moved past a language boundary
+    // Skip if a language switch happened recently (3s cooldown) to avoid fighting with checkLanguageSwitch
+    const timeSinceSwitch = Date.now() - lastLanguageSwitchTime;
+    if (timeSinceMatch > 1500 && newSylCount > 5 && timeSinceSwitch > 3000) {
+      const lookEnd = Math.min(currentWordIndex + 5, scriptWords.length);
+      for (let w = currentWordIndex + 1; w < lookEnd; w++) {
+        if (scriptWords[w].sylEnd > scriptWords[w].sylStart) {
+          const neededLang = getRecogLangCode(scriptWords[w].lang);
+          if (neededLang !== currentRecogLang) {
+            // Advance past remaining same-language words to the language boundary
+            currentWordIndex = w;
+            currentAlignPos = scriptWords[w].sylStart;
+            currentLineIndex = scriptWords[w].lineIndex;
+            recordLineTransition(scriptWords[w].lineIndex);
+            sessionStats.langSwitches++;
+            sessionStats.stuckEvents++;
+            addDiagLine(`Early lang switch (stuck ${stuckSec}s): ${currentRecogLang} → ${neededLang} at word ${w}`, 'info');
+            broadcastMessage({ type: 'highlightWord', wordIndex: w, lineIndex: scriptWords[w].lineIndex });
+            lastConsumedSylCount = 0;
+            lastMatchTime = Date.now();
+            lastLanguageSwitchTime = Date.now();
+            initSpeechRecognition(neededLang);
+            return; // Exit processTranscription — new recognition session will handle the rest
+          }
+        }
+      }
+    }
+
+    // Unstick: advance progressively more the longer we're stuck
+    // 3s → 3 words, 6s → 5 words, 12s → 8 words, 25s+ → 15 words
+    if (timeSinceMatch > 3000 && newSylCount > 10) {
+      const stuckSeconds = timeSinceMatch / 1000;
+      const advanceBy = stuckSeconds > 25 ? 15 : stuckSeconds > 12 ? 8 : stuckSeconds > 6 ? 5 : 3;
+      const nextWord = Math.min(currentWordIndex + advanceBy, scriptWords.length - 1);
+      if (nextWord > currentWordIndex) {
+        currentWordIndex = nextWord;
+        currentAlignPos = scriptWords[nextWord].sylStart;
+        currentLineIndex = scriptWords[nextWord].lineIndex;
+        recordLineTransition(scriptWords[nextWord].lineIndex);
+        lastMatchTime = Date.now(); // Reset so we don't cascade unstick every frame
+        sessionStats.unstickCount++;
+        sessionStats.stuckEvents++;
+        addDiagLine(`Unstick: advanced to word ${nextWord} ("${scriptWords[nextWord].text}")`, 'warn');
+        broadcastMessage({ type: 'highlightWord', wordIndex: nextWord, lineIndex: scriptWords[nextWord].lineIndex });
+        checkLanguageSwitch(nextWord);
+      }
+    }
+  }
+}
+
+function updateRemainingTime(currentLine) {
+  const totalLines = chapters.reduce((sum, ch) => sum + ch.lines.length, 0);
+  const remainingLines = totalLines - currentLine;
+  if (totalLines > 0 && elapsedSeconds > 5 && currentLine > 0) {
+    const pace = elapsedSeconds / currentLine;
+    const remaining = remainingLines * pace;
+    const el = document.getElementById('remaining-time');
+    if (el) el.textContent = formatTime(remaining);
+  }
+}
+
+// ---- Diagnostic ----
+let diagMatchCount = 0;
+let diagNoMatchCount = 0;
+let diagLastMatchLine = -1;
+
+// Session stats for browser comparison
+let sessionStats = {};
+function resetSessionStats() {
+  sessionStats = {
+    matchCount: 0,
+    uniqueWordsMatched: new Set(),
+    totalConfidence: 0,
+    stuckEvents: 0,       // times stuck > 3s
+    unstickCount: 0,
+    watchdogRestarts: 0,
+    recognitionRestarts: 0,
+    langSwitches: 0,
+    highestWordReached: 0,
+    startWordIndex: currentWordIndex || 0,
+    startTime: Date.now(),
+  };
+}
+resetSessionStats();
+
+function logSessionSummary() {
+  const duration = (Date.now() - sessionStats.startTime) / 1000;
+  const uniqueMatched = sessionStats.uniqueWordsMatched.size;
+  const coverage = scriptWords.length > 0
+    ? ((sessionStats.highestWordReached / scriptWords.length) * 100).toFixed(0) : 0;
+  const matchRate = sessionStats.highestWordReached > 0
+    ? ((uniqueMatched / sessionStats.highestWordReached) * 100).toFixed(0) : 0;
+  const avgConf = sessionStats.matchCount > 0
+    ? ((sessionStats.totalConfidence / sessionStats.matchCount) * 100).toFixed(0) : 0;
+  const wpm = duration > 5 ? ((sessionStats.highestWordReached / duration) * 60).toFixed(0) : '-';
+  const browser = navigator.userAgent.includes('Safari') && !navigator.userAgent.includes('Chrome') ? 'Safari' : 'Chrome';
+
+  const summary = [
+    `\n=== SESSION SUMMARY (${browser}) ===`,
+    `Duration: ${formatTime(Math.round(duration))}`,
+    `Words reached: ${sessionStats.highestWordReached} / ${scriptWords.length} (${coverage}% coverage)`,
+    `Match rate: ${matchRate}% (${uniqueMatched} unique words matched)`,
+    `Avg confidence: ${avgConf}%`,
+    `Tracking speed: ${wpm} words/min`,
+    `Stuck events (>3s): ${sessionStats.stuckEvents}`,
+    `Unstick advances: ${sessionStats.unstickCount}`,
+    `Watchdog restarts: ${sessionStats.watchdogRestarts}`,
+    `Recognition restarts: ${sessionStats.recognitionRestarts}`,
+    `Language switches: ${sessionStats.langSwitches}`,
+    `================================`,
+  ];
+  summary.forEach(line => addStateLine(line));
+  // Save rehearsal stats
+  if (duration > 10 && matchRate > 0) {
+    saveRehearsalSession(+matchRate, +(wpm === '-' ? 0 : wpm), +coverage);
+  }
+}
+
+function addStateLine(text) {
+  // Always log state changes (start/stop/voice toggle) even if diagnostic mode is off
+  const log = document.getElementById('diag-log');
+  if (!log) return;
+  const line = document.createElement('div');
+  line.className = 'diag-line info';
+  line.textContent = `[${new Date().toLocaleTimeString()}] STATE: ${text}`;
+  log.appendChild(line);
+  log.scrollTop = log.scrollHeight;
+  while (log.children.length > 2000) log.removeChild(log.firstChild);
+}
+
+function addDiagLine(text, cls) {
+  if (!settings.diagnosticMode) return;
+  const log = document.getElementById('diag-log');
+  if (!log) return;
+  const line = document.createElement('div');
+  line.className = 'diag-line' + (cls ? ' ' + cls : '');
+  line.textContent = `[${new Date().toLocaleTimeString()}] ${text}`;
+  log.appendChild(line);
+  log.scrollTop = log.scrollHeight;
+  while (log.children.length > 2000) log.removeChild(log.firstChild);
+
+  // Update stats
+  if (cls === 'match') { diagMatchCount++; diagNoMatchCount = 0; }
+  if (cls === 'nomatch') diagNoMatchCount++;
+  updateDiagStats();
+}
+
+function updateDiagStats() {
+  const el = document.getElementById('diag-stats');
+  if (!el) return;
+  const currentLine = currentAlignPos < scriptSyllables.length
+    ? scriptSyllables[currentAlignPos]?.lineIndex ?? currentLineIndex : currentLineIndex;
+  const totalLines = chapters.reduce((sum, ch) => sum + ch.lines.length, 0);
+  const stuckWarn = diagNoMatchCount > 10 ? ' | STUCK?' : '';
+  const srtInfo = captionTimeline.length > 0 ? ` | SRT: ${captionTimeline.length}` : '';
+  el.textContent = `Word ${currentWordIndex}/${scriptWords.length} | Line ${currentLine}/${totalLines} | Matches: ${diagMatchCount} | Misses: ${diagNoMatchCount}${stuckWarn}${srtInfo}`;
+}
+
+function copyDiagLog() {
+  const log = document.getElementById('diag-log');
+  if (!log) return;
+
+  // Build header with context
+  const currentLine = currentAlignPos < scriptSyllables.length
+    ? scriptSyllables[currentAlignPos]?.lineIndex ?? currentLineIndex : currentLineIndex;
+  const totalLines = chapters.reduce((sum, ch) => sum + ch.lines.length, 0);
+
+  let header = `=== SyncPrompt Debug Log (v0.6) ===\n`;
+  header += `Time: ${new Date().toLocaleString()}\n`;
+  header += `Browser: ${navigator.userAgent.includes('Safari') && !navigator.userAgent.includes('Chrome') ? 'Safari' : 'Chrome'}\n`;
+  header += `Script lines: ${totalLines} | Script syllables: ${scriptSyllables.length} | Script words: ${scriptWords.length}\n`;
+  header += `Current position: word ${currentWordIndex}, line ${currentLine}, syllable ${currentAlignPos}\n`;
+  header += `Consumed: ${lastConsumedSylCount}\n`;
+  header += `Total matches: ${diagMatchCount}\n`;
+  // Session stats summary
+  const ss = sessionStats;
+  const dur = (Date.now() - ss.startTime) / 1000;
+  const uniqueM = ss.uniqueWordsMatched.size;
+  const cov = scriptWords.length > 0 ? ((ss.highestWordReached / scriptWords.length) * 100).toFixed(0) : 0;
+  const mRate = ss.highestWordReached > 0 ? ((uniqueM / ss.highestWordReached) * 100).toFixed(0) : 0;
+  const avgC = ss.matchCount > 0 ? ((ss.totalConfidence / ss.matchCount) * 100).toFixed(0) : 0;
+  const wpmRate = dur > 5 ? ((ss.highestWordReached / dur) * 60).toFixed(0) : '-';
+  header += `Session: coverage ${cov}% | match ${mRate}% (${uniqueM}/${ss.highestWordReached} words) | conf ${avgC}% | ${wpmRate} wpm | stuck ${ss.stuckEvents}x | unstick ${ss.unstickCount}x | watchdog ${ss.watchdogRestarts}x | restarts ${ss.recognitionRestarts}x | lang ${ss.langSwitches}x\n`;
+  header += `Settings: fontSize=${settings.fontSize}, voice=${settings.voiceEngine}, recogLang=${currentRecogLang}\n`;
+  header += `Line languages: ${scriptLineLangs.map((l, i) => `[${i}]${l}`).join(' ')}\n`;
+
+  // Words per line — helps spot problematic long lines
+  const wordsPerLine = {};
+  scriptWords.forEach(w => { wordsPerLine[w.lineIndex] = (wordsPerLine[w.lineIndex] || 0) + 1; });
+  header += `Words/line: ${Object.entries(wordsPerLine).map(([i, c]) => `[${i}]${c}`).join(' ')}\n`;
+
+  // Show word context around current position
+  const wordCtxStart = Math.max(0, currentWordIndex - 3);
+  const wordCtxEnd = Math.min(scriptWords.length, currentWordIndex + 8);
+  const wordCtx = [];
+  for (let i = wordCtxStart; i < wordCtxEnd; i++) {
+    wordCtx.push(i === currentWordIndex ? `[${scriptWords[i].text}]` : scriptWords[i].text);
+  }
+  header += `Words around pos: …${wordCtx.join(' ')}…\n`;
+
+  // Get the script text around current position for context
+  const scriptLines = [];
+  let lineIdx = 0;
+  chapters.forEach(ch => {
+    ch.lines.forEach(l => {
+      if (Math.abs(lineIdx - currentLine) <= 3) {
+        scriptLines.push(`  ${lineIdx === +currentLine ? '>>>' : '   '} [${lineIdx}] ${l.text}`);
+      }
+      lineIdx++;
+    });
+  });
+  header += `\nScript context (around line ${currentLine}):\n${scriptLines.join('\n')}\n`;
+  // SRT caption timeline
+  if (captionTimeline.length > 0) {
+    header += `\n=== SRT Timeline (${captionTimeline.length} entries) ===\n`;
+    const allLines = chapters.flatMap(ch => ch.lines);
+    captionTimeline.forEach((entry, i) => {
+      const lineText = allLines[entry.lineIndex]?.text || '?';
+      const preview = lineText.replace(/\*\*/g, '').substring(0, 50);
+      const srtNum = getSrtLineNumber(entry.lineIndex);
+      header += `  SRT#${srtNum || '-'} line[${entry.lineIndex}] ${formatSrtTime(entry.ms)} "${preview}"\n`;
+    });
+  }
+
+  header += `\n=== Log entries ===\n`;
+
+  // Get log lines
+  const lines = Array.from(log.querySelectorAll('.diag-line'))
+    .map(el => el.textContent)
+    .join('\n');
+
+  navigator.clipboard.writeText(header + lines).then(() => {
+    addDiagLine('Log copied to clipboard!', 'info');
+  }).catch(() => {
+    // Fallback: select text
+    const range = document.createRange();
+    range.selectNodeContents(log);
+    window.getSelection().removeAllRanges();
+    window.getSelection().addRange(range);
+    addDiagLine('Select All done — press Cmd+C to copy', 'info');
+  });
+}
+
+function clearDiagLog() {
+  const log = document.getElementById('diag-log');
+  if (!log) return;
+  log.innerHTML = '<div class="diag-line info">Log cleared.</div>';
+  diagMatchCount = 0;
+  diagNoMatchCount = 0;
+  updateDiagStats();
+}
+
+// ---- Reset ----
+function resetToTop() {
+  if (isStarted) stopSession();
+  currentLineIndex = 0;
+  currentWordIndex = 0;
+  currentAlignPos = 0;
+  lastConsumedSylCount = 0;
+  broadcastMessage({ type: 'highlightWord', wordIndex: 0, lineIndex: 0 });
+  elapsedSeconds = 0;
+  updateTimerDisplay();
+  const rem = document.getElementById('remaining-time');
+  if (rem) rem.textContent = '--';
+  const text = document.getElementById('status-text');
+  if (text) text.textContent = 'Ready';
+  updateActiveChapter();
+}
+
+// ---- Keyboard ----
+function handleKeyboard(e) {
+  if (e.target.tagName === 'TEXTAREA' || e.target.tagName === 'INPUT') return;
+
+  switch (e.key) {
+    case ' ':
+      e.preventDefault();
+      if (isTeleprompterOpen()) toggleStart();
+      break;
+    case 'ArrowUp':
+      e.preventDefault();
+      broadcastMessage({ type: 'nudge', pixels: -40 });
+      break;
+    case 'ArrowDown':
+      e.preventDefault();
+      broadcastMessage({ type: 'nudge', pixels: 40 });
+      break;
+    case 'ArrowLeft':
+      e.preventDefault();
+      jumpToChapter(getCurrentChapterIndex() - 1);
+      break;
+    case 'ArrowRight':
+      e.preventDefault();
+      jumpToChapter(getCurrentChapterIndex() + 1);
+      break;
+    case '+':
+    case '=':
+      e.preventDefault();
+      updateSetting('fontSize', Math.min(80, settings.fontSize + 2));
+      document.getElementById('slider-fontSize').value = settings.fontSize;
+      break;
+    case '-':
+    case '_':
+      e.preventDefault();
+      updateSetting('fontSize', Math.max(16, settings.fontSize - 2));
+      document.getElementById('slider-fontSize').value = settings.fontSize;
+      break;
+    case 'f':
+    case 'F':
+      e.preventDefault();
+      broadcastMessage({ type: 'toggleFullscreen' });
+      break;
+    case 'm':
+    case 'M':
+      e.preventDefault();
+      toggleSetting('mirrorMode', document.getElementById('btn-mirror'));
+      break;
+    case 'r':
+    case 'R':
+      e.preventDefault();
+      resetToTop();
+      break;
+    case 'b':
+    case 'B':
+      e.preventDefault();
+      jumpToNextBookmark();
+      break;
+    case 'e':
+    case 'E':
+      e.preventDefault();
+      endSession();
+      break;
+    case 'v':
+    case 'V':
+      e.preventDefault();
+      toggleVoiceMode();
+      break;
+    case '?':
+      e.preventDefault();
+      showHelp();
+      break;
+    case 't':
+    case 'T':
+      e.preventDefault();
+      if (isTeleprompterOpen()) {
+        teleprompterWindow.focus();
+      } else {
+        openTeleprompterWindow();
+      }
+      break;
+    case 'Escape':
+      closeHelp();
+      cancelCountdown();
+      break;
+  }
+}
+
+function getCurrentChapterIndex() {
+  if (chapters.length === 0) return 0;
+  let lineCount = 0;
+  for (let i = 0; i < chapters.length; i++) {
+    lineCount += chapters[i].lines.length;
+    if (lineCount > currentLineIndex) return i;
+  }
+  return chapters.length - 1;
+}
+
+function updateActiveChapter() {
+  const idx = getCurrentChapterIndex();
+  document.querySelectorAll('.chapter-item').forEach((el, i) => {
+    el.classList.toggle('active', i === idx);
+  });
+}
+
+
+// ============================================================
+// TELEPROMPTER WINDOW
+// ============================================================
+function initTeleprompterWindow() {
+  bc = new BroadcastChannel('teleprompter');
+  settings = loadSettings();
+  // Teleprompter always uses dark theme for status bar styling
+  document.body.classList.add('theme-dark');
+  scriptText = localStorage.getItem('tp_script') || '';
+  chapters = parseChapters(scriptText);
+  loadBookmarks();
+
+  document.body.innerHTML = `
+    <div class="teleprompter-window" id="tp-window">
+      <div class="tp-status-bar" id="tp-status-bar">
+        <span class="tp-status-tag"><span class="tp-status-dot off" id="tp-status-session"></span> <span id="tp-status-session-label">Ready</span></span>
+        <span class="tp-status-tag"><span class="tp-status-dot off" id="tp-status-voice"></span> <span id="tp-status-voice-label">Voice OFF</span></span>
+      </div>
+      <div class="v-mask-top" id="v-mask-top"></div>
+      <div class="v-mask-bottom" id="v-mask-bottom"></div>
+      <div class="focus-line" id="focus-line"></div>
+      <div class="teleprompter-scroll-container" id="tp-container">
+        <div class="teleprompter-content" id="tp-content"></div>
+      </div>
+      <div class="countdown-overlay" id="tp-countdown"></div>
+    </div>
+  `;
+
+  renderTeleprompter();
+  positionFocusLine();
+  applyVMask();
+  startRenderLoop();
+
+  bc.onmessage = (e) => {
+    const msg = e.data;
+    switch (msg.type) {
+      case 'settings':
+        settings = msg.settings;
+        renderTeleprompter();
+        positionFocusLine();
+        applyVMask();
+        scrollToLine(currentLineIndex, false);
+        break;
+      case 'script':
+        scriptText = msg.scriptText;
+        settings = msg.settings;
+        chapters = parseChapters(scriptText);
+        loadBookmarks();
+        if (!isScrolling) {
+          // Only reset position if not actively scrolling (i.e. not during session)
+          scrollY = 0;
+          targetScrollY = 0;
+          currentLineIndex = 0;
+          currentWordIndex = 0;
+        }
+        renderTeleprompter();
+        positionFocusLine();
+        applyVMask();
+        if (isScrolling || currentLineIndex > 0) {
+          scrollToLine(currentLineIndex, false);
+        }
+        break;
+      case 'render':
+        loadBookmarks();
+        renderTeleprompter();
+        positionFocusLine();
+        applyVMask();
+        scrollToLine(currentLineIndex, false);
+        break;
+      case 'scrollToLine':
+        scrollToLine(msg.lineIndex, msg.smooth !== false);
+        break;
+      case 'startManualScroll':
+        manualScrollSpeed = msg.speed;
+        isScrolling = true;
+        break;
+      case 'updateSpeed':
+        manualScrollSpeed = msg.speed;
+        break;
+      case 'stopScroll':
+        isScrolling = false;
+        break;
+      case 'nudge':
+        targetScrollY += msg.pixels;
+        targetScrollY = Math.max(0, targetScrollY);
+        break;
+      case 'highlightWord':
+        highlightWord(msg.wordIndex, msg.lineIndex);
+        break;
+      case 'toggleFullscreen':
+        toggleFullscreen();
+        break;
+      case 'countdown':
+        showCountdown(msg.text);
+        break;
+      case 'tpState':
+        updateTpStatusBar(msg);
+        break;
+    }
+  };
+
+  // Click to re-anchor
+  document.getElementById('tp-content').addEventListener('click', (e) => {
+    const lineEl = e.target.closest('.teleprompter-line');
+    if (lineEl) {
+      const idx = parseInt(lineEl.dataset.lineIndex);
+      if (!isNaN(idx)) {
+        bc.postMessage({ type: 'lineClicked', lineIndex: idx });
+        scrollToLine(idx, true);
+      }
+    }
+  });
+
+  // Keyboard in teleprompter window
+  document.addEventListener('keydown', (e) => {
+    switch (e.key) {
+      case ' ':
+        e.preventDefault();
+        bc.postMessage({ type: 'toggleStartFromTP' });
+        break;
+      case 'f': case 'F':
+        e.preventDefault();
+        toggleFullscreen();
+        break;
+      case 'ArrowUp':
+        e.preventDefault();
+        targetScrollY -= 40;
+        targetScrollY = Math.max(0, targetScrollY);
+        break;
+      case 'ArrowDown':
+        e.preventDefault();
+        targetScrollY += 40;
+        break;
+      case 'ArrowLeft':
+        e.preventDefault();
+        bc.postMessage({ type: 'prevChapterFromTP' });
+        break;
+      case 'ArrowRight':
+        e.preventDefault();
+        bc.postMessage({ type: 'nextChapterFromTP' });
+        break;
+      case 'v': case 'V':
+        e.preventDefault();
+        bc.postMessage({ type: 'toggleVoiceFromTP' });
+        break;
+      case 'm': case 'M':
+        e.preventDefault();
+        bc.postMessage({ type: 'toggleMirrorFromTP' });
+        break;
+      case 'e': case 'E':
+        e.preventDefault();
+        bc.postMessage({ type: 'endSessionFromTP' });
+        break;
+      case 'r': case 'R':
+        e.preventDefault();
+        bc.postMessage({ type: 'resetFromTP' });
+        break;
+      case '+': case '=':
+        e.preventDefault();
+        bc.postMessage({ type: 'fontSizeFromTP', delta: 2 });
+        break;
+      case '-': case '_':
+        e.preventDefault();
+        bc.postMessage({ type: 'fontSizeFromTP', delta: -2 });
+        break;
+    }
+  });
+
+  window.addEventListener('resize', () => {
+    positionFocusLine();
+    applyVMask();
+    renderTeleprompter();
+  });
+}
+
+function renderTeleprompter() {
+  const content = document.getElementById('tp-content');
+  const tpWindow = document.getElementById('tp-window');
+  if (!content || !tpWindow) return;
+
+  const focusOffset = (window.innerHeight * settings.focusLinePercent) / 100;
+  const bottomPad = window.innerHeight * 0.7;
+
+  // Mirror
+  tpWindow.classList.toggle('mirrored', settings.mirrorMode);
+
+  let html = `<div style="height: ${focusOffset}px;"></div>`;
+
+  let globalLineIdx = 0;
+  let globalWordIdx = 0;
+  chapters.forEach((chap, chIdx) => {
+    if (chIdx > 0) {
+      html += `<div class="teleprompter-chapter-divider${settings.showChapterDividers ? '' : ' hidden'}"></div>`;
+    }
+    chap.lines.forEach(line => {
+      const state = globalLineIdx < currentLineIndex ? 'past' :
+                    globalLineIdx === currentLineIndex ? 'current' : 'future';
+      // Split into words and wrap each in a span
+      const cleanText = line.text.replace(/\*\*/g, '').replace(/[\u200B-\u200F\u202A-\u202E\uFEFF]/g, '');
+      const words = cleanText.split(/\s+/).filter(w => w.length > 0);
+      // Also check for bold markers in original text
+      const boldWords = new Set();
+      const boldRegex = /\*\*(.+?)\*\*/g;
+      let bm;
+      while ((bm = boldRegex.exec(line.text)) !== null) {
+        bm[1].split(/\s+/).forEach(w => boldWords.add(w));
+      }
+      const wordSpans = words.map(w => {
+        const spoken = globalWordIdx < currentWordIndex ? 'spoken' : '';
+        const escaped = escapeHtml(w);
+        const display = boldWords.has(w) ? `<strong>${escaped}</strong>` : escaped;
+        const span = `<span class="tp-word ${spoken}" data-word-index="${globalWordIdx}">${display}</span>`;
+        globalWordIdx++;
+        return span;
+      }).join(' ');
+      const noteClass = isNoteLine(line.text) ? ' note-line' : '';
+      const bmClass = bookmarkedLines.has(globalLineIdx) ? ' bookmarked' : '';
+      html += `<div class="teleprompter-line ${state}${noteClass}${bmClass}" data-line-index="${globalLineIdx}">${wordSpans}</div>`;
+      globalLineIdx++;
+    });
+  });
+
+  html += `<div class="teleprompter-end-marker">- END -</div>`;
+  html += `<div style="height: ${bottomPad}px;"></div>`;
+
+  content.innerHTML = html;
+
+  // Apply styles
+  content.style.cssText = `
+    font-size: ${settings.fontSize}px;
+    font-family: ${settings.fontFamily}, sans-serif;
+    font-weight: ${settings.fontBold ? 'bold' : 'normal'};
+    line-height: ${settings.lineHeight};
+    padding: 0 ${settings.marginH}px;
+    --dim-opacity: ${settings.dimOpacity};
+    color: #fff;
+  `;
+}
+
+function applyVMask() {
+  const top = document.getElementById('v-mask-top');
+  const bottom = document.getElementById('v-mask-bottom');
+  if (top) top.style.height = settings.marginV + 'px';
+  if (bottom) bottom.style.height = settings.marginV + 'px';
+}
+
+function positionFocusLine() {
+  const fl = document.getElementById('focus-line');
+  if (fl) {
+    fl.style.top = (window.innerHeight * settings.focusLinePercent / 100) + 'px';
+  }
+}
+
+function scrollToLine(lineIndex, smooth) {
+  currentLineIndex = lineIndex;
+  const content = document.getElementById('tp-content');
+  if (!content) return;
+
+  const lineEls = content.querySelectorAll('.teleprompter-line');
+  if (lineIndex >= 0 && lineIndex < lineEls.length) {
+    const el = lineEls[lineIndex];
+    const focusOffset = (window.innerHeight * settings.focusLinePercent) / 100;
+    const newY = Math.max(0, el.offsetTop - focusOffset);
+    targetScrollY = newY;
+    if (!smooth) {
+      // Instant snap for jumps (chapter click, line click, reset)
+      scrollY = newY;
+      content.style.transform = `translateY(${-scrollY}px)`;
+    }
+  }
+
+  // Update line states
+  lineEls.forEach((el, i) => {
+    el.classList.remove('past', 'current', 'future');
+    if (i < lineIndex) el.classList.add('past');
+    else if (i === lineIndex) el.classList.add('current');
+    else el.classList.add('future');
+  });
+}
+
+function highlightWord(wordIndex, lineIndex) {
+  currentLineIndex = lineIndex;
+  currentWordIndex = wordIndex;
+  const content = document.getElementById('tp-content');
+  if (!content) return;
+
+  // Mark words as spoken/unspoken
+  const wordEls = content.querySelectorAll('.tp-word');
+  for (let i = 0; i < wordEls.length; i++) {
+    const wIdx = parseInt(wordEls[i].dataset.wordIndex);
+    if (wIdx < wordIndex) {
+      wordEls[i].classList.add('spoken');
+    } else {
+      wordEls[i].classList.remove('spoken');
+    }
+  }
+
+  // Update line states based on which line the current word is on
+  const lineEls = content.querySelectorAll('.teleprompter-line');
+  lineEls.forEach((el, i) => {
+    el.classList.remove('past', 'current', 'future');
+    if (i < lineIndex) el.classList.add('past');
+    else if (i === lineIndex) el.classList.add('current');
+    else el.classList.add('future');
+  });
+
+  // Scroll to current word position (not line top — handles long wrapped lines)
+  const currentWordEl = content.querySelector(`.tp-word[data-word-index="${wordIndex}"]`);
+  const scrollTarget = currentWordEl || (lineIndex >= 0 && lineIndex < lineEls.length ? lineEls[lineIndex] : null);
+  if (scrollTarget) {
+    const focusOffset = (window.innerHeight * settings.focusLinePercent) / 100;
+    const newY = Math.max(0, scrollTarget.offsetTop - focusOffset);
+    scrollY = newY;
+    targetScrollY = newY;
+    if (content) {
+      content.style.transform = `translateY(${-scrollY}px)`;
+    }
+  }
+}
+
+function toggleFullscreen() {
+  if (!document.fullscreenElement) {
+    document.documentElement.requestFullscreen().catch(() => {});
+  } else {
+    document.exitFullscreen().catch(() => {});
+  }
+}
+
+function updateTpStatusBar(state) {
+  const bar = document.getElementById('tp-status-bar');
+  const sessionLabel = document.getElementById('tp-status-session-label');
+  const sessionDot = document.getElementById('tp-status-session');
+  const voiceLabel = document.getElementById('tp-status-voice-label');
+  const voiceDot = document.getElementById('tp-status-voice');
+  if (!bar) return;
+
+  if (sessionDot) sessionDot.className = 'tp-status-dot ' + (state.started ? 'on' : 'off');
+  if (sessionLabel) sessionLabel.textContent = state.started
+    ? (state.scrolling ? 'Scrolling' : state.voice ? 'Listening' : 'Started')
+    : 'Ready';
+
+  if (voiceDot) voiceDot.className = 'tp-status-dot ' + (state.voice ? (state.started ? 'listening' : 'on') : 'off');
+  if (voiceLabel) voiceLabel.textContent = state.voice ? 'Voice ON' : 'Voice OFF';
+
+  bar.classList.toggle('running', state.started);
+}
+
+function showCountdown(text) {
+  const overlay = document.getElementById('tp-countdown');
+  if (!overlay) return;
+  if (text === null) {
+    overlay.classList.remove('visible');
+  } else {
+    overlay.textContent = text;
+    overlay.classList.add('visible');
+  }
+}
+
+// ---- Render loop (60fps) ----
+let lineTrackCounter = 0;
+
+function startRenderLoop() {
+  function frame() {
+    // Manual scroll
+    if (isScrolling) {
+      targetScrollY += (manualScrollSpeed / 50);
+    }
+
+    // Clamp scroll position
+    const content = document.getElementById('tp-content');
+    if (content) {
+      const maxScroll = content.scrollHeight - window.innerHeight;
+      if (targetScrollY > maxScroll && maxScroll > 0) {
+        targetScrollY = maxScroll;
+        // End of script reached
+        if (isScrolling) {
+          isScrolling = false;
+          bc.postMessage({ type: 'endOfScript' });
+        }
+      }
+    }
+    targetScrollY = Math.max(0, targetScrollY);
+
+    // Smooth interpolation
+    const diff = targetScrollY - scrollY;
+    if (Math.abs(diff) > 0.5) {
+      scrollY += diff * 0.12;
+    } else {
+      scrollY = targetScrollY;
+    }
+
+    // Apply scroll
+    if (content) {
+      content.style.transform = `translateY(${-scrollY}px)`;
+    }
+
+    // Track current line during manual scroll (every 10 frames for performance)
+    lineTrackCounter++;
+    if (isScrolling && content && lineTrackCounter % 10 === 0) {
+      const focusY = scrollY + (window.innerHeight * (settings.focusLinePercent / 100));
+      const lines = content.querySelectorAll('.teleprompter-line');
+      let closestIdx = 0;
+      for (let i = 0; i < lines.length; i++) {
+        if (lines[i].offsetTop <= focusY) closestIdx = i;
+        else break;
+      }
+      if (closestIdx !== currentLineIndex) {
+        currentLineIndex = closestIdx;
+        bc.postMessage({ type: 'focusLineChanged', lineIndex: closestIdx });
+        lines.forEach((el, i) => {
+          el.classList.remove('past', 'current', 'future');
+          if (i < closestIdx) el.classList.add('past');
+          else if (i === closestIdx) el.classList.add('current');
+          else el.classList.add('future');
+        });
+      }
+    }
+
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+}
+
+// ---- Init ----
+if (IS_TELEPROMPTER) {
+  initTeleprompterWindow();
+} else {
+  initControlWindow();
+}
+</script>
+</body>
+</html>
