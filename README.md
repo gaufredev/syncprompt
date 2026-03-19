@@ -81,6 +81,19 @@ This version **only works locally** (not from the hosted GitHub Pages link) beca
 - **Chrome (Mac/Windows) — Works**, but voice recognition uses Google servers (requires internet). May occasionally go silent during long sessions — the app detects this and auto-recovers.
 - **Edge (Windows) — Should work.** Same engine as Chrome, not extensively tested.
 
+## Lighter Code, Faster App, Greener Web
+
+Every website you visit uses energy — from the server that hosts it, through the network that delivers it, to the device that displays it. The average web page loads over 2 MB of data per visit, and the internet's total carbon footprint now rivals the airline industry's.
+
+A lighter app doesn't just help the planet — it loads faster and runs smoother for you. SyncPrompt is built with this in mind:
+
+- **No Google Fonts** — uses your device's built-in fonts instead of downloading ~300 KB of web fonts per visit
+- **No heavy frameworks** — pure HTML, CSS, and vanilla JavaScript
+- **No tracking scripts** — nothing phoning home in the background
+- **No unnecessary images** — even the favicon is a lightweight inline SVG
+
+Curious about the footprint of your own sites? [Website Carbon Calculator](https://www.websitecarbon.com) · [Green Web Foundation](https://www.thegreenwebfoundation.org)
+
 ## License
 
 MIT
