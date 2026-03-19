@@ -4,11 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>SyncPrompt</title>
-<link rel="icon" type="image/png" href="favicon.png">
-<link rel="apple-touch-icon" href="favicon.png">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Noto+Sans+KR:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23e8e0d0'/%3E%3Cpath d='M32 10c-5 0-9 4-9 9v12c0 5 4 9 9 9s9-4 9-9V19c0-5-4-9-9-9z' fill='%232e6e8e'/%3E%3Cpath d='M20 28v3c0 6.6 5.4 12 12 12s12-5.4 12-12v-3h-3v3c0 5-4 9-9 9s-9-4-9-9v-3h-3z' fill='%232e6e8e'/%3E%3Crect x='18' y='28' width='28' height='3' rx='1.5' fill='%232e6e8e'/%3E%3Cpath d='M32 43v5' stroke='%232e6e8e' stroke-width='3' stroke-linecap='round'/%3E%3Cpath d='M25 51l7 7 7-7' fill='none' stroke='%232e6e8e' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3Ccircle cx='32' cy='30' r='1.5' fill='%2358a65c'/%3E%3Cpath d='M25 17h14M25 21h14M25 25h14' stroke='%23e8e0d0' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E">
 <style>
 :root {
   --radius-sm: 5px;
@@ -79,7 +75,7 @@ body.theme-light {
   color: var(--text-muted);
   cursor: pointer;
   font-size: 13px;
-  font-family: 'Instrument Sans', sans-serif;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
   transition: all 0.15s;
   line-height: 1;
 }
@@ -90,7 +86,7 @@ body.theme-light {
 body {
   background: var(--bg);
   color: var(--text);
-  font-family: 'Instrument Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
   height: 100vh;
   overflow: hidden;
   -webkit-font-smoothing: antialiased;
@@ -146,7 +142,7 @@ body {
   color: var(--text-muted);
   cursor: pointer;
   font-size: 12px;
-  font-family: 'Instrument Sans', sans-serif;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
   font-weight: 500;
   transition: all 0.15s ease;
   letter-spacing: 0.01em;
@@ -248,7 +244,7 @@ body {
 
 .control-row .value {
   font-size: 10px;
-  font-family: 'JetBrains Mono', monospace;
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
   color: var(--text-dim);
   min-width: 34px;
   text-align: right;
@@ -264,7 +260,7 @@ body {
   border-radius: var(--radius-sm);
   color: var(--text);
   font-size: 12px;
-  font-family: 'Instrument Sans', sans-serif;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
   transition: border-color 0.15s;
 }
 .control-row select:hover, .control-row input[type="text"]:hover {
@@ -284,7 +280,7 @@ body {
   color: var(--text-muted);
   cursor: pointer;
   font-size: 11px;
-  font-family: 'Instrument Sans', sans-serif;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
   font-weight: 500;
   transition: all 0.15s ease;
 }
@@ -326,7 +322,7 @@ body {
   color: var(--text-muted);
   cursor: pointer;
   font-size: 12px;
-  font-family: 'Instrument Sans', sans-serif;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
   font-weight: 500;
   transition: all 0.15s;
 }
@@ -335,7 +331,7 @@ body {
 .script-editor .editor-toolbar .info {
   margin-left: auto;
   font-size: 11px;
-  font-family: 'JetBrains Mono', monospace;
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
   color: var(--text-dim);
   letter-spacing: -0.3px;
 }
@@ -348,7 +344,7 @@ body {
   color: var(--text);
   padding: 16px;
   font-size: 14px;
-  font-family: 'Instrument Sans', sans-serif;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
   resize: none;
   line-height: 1.7;
   transition: border-color 0.2s;
@@ -398,7 +394,7 @@ body {
   gap: 5px;
 }
 .status-bar .status-item span {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
   font-size: 11px;
   letter-spacing: -0.3px;
 }
@@ -437,7 +433,7 @@ body {
   display: none;
   background: var(--diag-bg);
   border-top: 1px solid var(--border);
-  font-family: 'JetBrains Mono', monospace;
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
   font-size: 11px;
 }
 .diagnostic-panel.visible { display: flex; flex-direction: column; }
@@ -456,7 +452,7 @@ body {
   color: var(--text-muted);
   cursor: pointer;
   font-size: 10px;
-  font-family: 'JetBrains Mono', monospace;
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
   transition: all 0.12s;
 }
 .diag-toolbar button:hover { background: var(--control-bg-hover); color: var(--text); }
@@ -489,7 +485,7 @@ body {
   justify-content: center;
   font-size: 120px;
   font-weight: 300;
-  font-family: 'Instrument Sans', sans-serif;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
   color: var(--accent);
   text-shadow: 0 0 60px var(--accent-glow);
 }
@@ -603,7 +599,7 @@ body {
   background: rgba(30, 30, 30, 0.85);
   border-radius: 6px;
   font-size: 14px;
-  font-family: 'Instrument Sans', -apple-system, sans-serif;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
   color: #888;
   pointer-events: none;
   transition: opacity 0.5s;
@@ -621,14 +617,14 @@ body {
 .line-list-item:hover { background: var(--control-bg-hover); color: var(--text); }
 .line-list-item.current { background: var(--green-dim); color: var(--green); }
 .line-list-item.selected { background: var(--accent-glow); color: var(--accent); }
-.line-list-item .line-num { color: var(--text-dim); margin-right: 6px; min-width: 20px; display: inline-block; text-align: right; flex-shrink: 0; font-family: 'JetBrains Mono', monospace; font-size: 10px; }
-.line-list-item .srt-num { color: var(--accent); font-size: 9px; font-weight: 600; margin-right: 4px; flex-shrink: 0; font-family: 'JetBrains Mono', monospace; opacity: 0.7; }
+.line-list-item .line-num { color: var(--text-dim); margin-right: 6px; min-width: 20px; display: inline-block; text-align: right; flex-shrink: 0; font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 10px; }
+.line-list-item .srt-num { color: var(--accent); font-size: 9px; font-weight: 600; margin-right: 4px; flex-shrink: 0; font-family: ui-monospace, 'SF Mono', Menlo, monospace; opacity: 0.7; }
 .line-list-item.note { opacity: 0.5; font-style: italic; }
 .export-menu { position: absolute; top: 100%; left: 0; z-index: 100; background: var(--panel-bg); border: 1px solid var(--border); border-radius: var(--radius-sm); box-shadow: 0 4px 12px rgba(0,0,0,0.3); display: flex; flex-direction: column; min-width: 140px; }
-.export-menu button { padding: 8px 12px; background: none; border: none; color: var(--text); font-size: 12px; font-family: 'Instrument Sans', sans-serif; cursor: pointer; text-align: left; }
+.export-menu button { padding: 8px 12px; background: none; border: none; color: var(--text); font-size: 12px; font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif; cursor: pointer; text-align: left; }
 .export-menu button:hover { background: var(--accent); color: #fff; }
 .line-list-item .line-text { overflow: hidden; text-overflow: ellipsis; flex: 1; }
-.line-list-item .go-btn { display: none; margin-left: 4px; padding: 1px 8px; background: var(--accent); color: #fff; border: none; border-radius: var(--radius-sm); font-size: 10px; font-family: 'Instrument Sans', sans-serif; font-weight: 600; cursor: pointer; flex-shrink: 0; transition: background 0.12s; }
+.line-list-item .go-btn { display: none; margin-left: 4px; padding: 1px 8px; background: var(--accent); color: #fff; border: none; border-radius: var(--radius-sm); font-size: 10px; font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif; font-weight: 600; cursor: pointer; flex-shrink: 0; transition: background 0.12s; }
 .line-list-item .go-btn:hover { background: var(--accent-hover); }
 .line-list-item.selected .go-btn { display: inline-block; }
 .line-list-item .bookmark-star { margin-left: 2px; margin-right: 2px; cursor: pointer; opacity: 0.2; flex-shrink: 0; font-size: 11px; transition: opacity 0.15s; }
@@ -638,7 +634,7 @@ body {
 .teleprompter-line.bookmarked { position: relative; }
 
 /* Rehearsal stats */
-.rehearsal-stats { font-size: 10px; color: var(--text-dim); margin-top: 4px; font-family: 'JetBrains Mono', monospace; letter-spacing: -0.2px; }
+.rehearsal-stats { font-size: 10px; color: var(--text-dim); margin-top: 4px; font-family: ui-monospace, 'SF Mono', Menlo, monospace; letter-spacing: -0.2px; }
 
 /* Help modal */
 .help-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.6); z-index: 9999; justify-content: center; align-items: center; }
@@ -648,7 +644,7 @@ body {
 .help-modal h3 { margin: 16px 0 6px; font-size: 13px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.5px; }
 .help-modal p, .help-modal li { font-size: 12px; color: var(--text-muted); line-height: 1.6; }
 .help-modal ul { padding-left: 18px; margin: 4px 0; }
-.help-modal kbd { background: var(--control-bg); border: 1px solid var(--border); border-radius: 3px; padding: 1px 5px; font-size: 11px; font-family: 'JetBrains Mono', monospace; color: var(--text); }
+.help-modal kbd { background: var(--control-bg); border: 1px solid var(--border); border-radius: 3px; padding: 1px 5px; font-size: 11px; font-family: ui-monospace, 'SF Mono', Menlo, monospace; color: var(--text); }
 .help-modal .close-btn { float: right; background: none; border: none; color: var(--text-dim); font-size: 20px; cursor: pointer; padding: 0 4px; line-height: 1; }
 .help-modal .close-btn:hover { color: var(--text); }
 
@@ -662,7 +658,7 @@ body {
 /* Pace indicator */
 .pace-panel { display: none; gap: 12px; padding: 4px 0; font-size: 11px; color: var(--text-dim); align-items: center; }
 .pace-panel.visible { display: flex; }
-.pace-value { font-weight: 600; color: var(--text); font-family: 'JetBrains Mono', monospace; }
+.pace-value { font-weight: 600; color: var(--text); font-family: ui-monospace, 'SF Mono', Menlo, monospace; }
 .pace-indicator { padding: 2px 8px; border-radius: var(--radius-sm); font-size: 10px; font-weight: 600; letter-spacing: 0.3px; }
 .pace-indicator.slow { background: rgba(229, 160, 60, 0.15); color: var(--orange); }
 .pace-indicator.good { background: var(--green-dim); color: var(--green); }
@@ -1348,7 +1344,7 @@ function buildControlUI() {
           <span>WPM: <span class="pace-value" id="wpm-value">--</span></span>
           <span id="pace-label"></span>
         </div>
-        <div class="status-item" style="margin-left:auto; color:var(--text-dim); font-size:10px; font-family:'JetBrains Mono',monospace; letter-spacing:-0.2px; opacity:0.7;">
+        <div class="status-item" style="margin-left:auto; color:var(--text-dim); font-size:10px; font-family:ui-monospace, 'SF Mono', Menlo, monospace; letter-spacing:-0.2px; opacity:0.7;">
           Space: start/pause · E: end · V: voice · T: teleprompter · +/-: font · ←→: chapters · B: bookmark · F: fullscreen · M: mirror · R: reset
         </div>
       </div>
@@ -1429,6 +1425,10 @@ function buildControlUI() {
         <p>SyncPrompt is open source. Found a bug? Have a feature idea? Contributions and feedback are welcome.</p>
         <p><a href="https://github.com/gaufredev/syncprompt" target="_blank" style="color:var(--accent);">github.com/gaufredev/syncprompt</a></p>
         <p style="font-size:11px;color:var(--text-dim);">Released under the MIT License. Feel free to fork, improve, and submit a pull request. You can also open an issue to report bugs or suggest features.</p>
+
+        <h3>Eco-Friendly by Design</h3>
+        <p>We care about the planet — also on the web. SyncPrompt uses no heavy frameworks, no unnecessary images, no Google Fonts, and no tracking scripts — keeping its carbon footprint as low as possible. Because sustainability shouldn't stop at the code editor.</p>
+        <p style="font-size:11px;color:var(--text-dim);"><a href="https://www.websitecarbon.com" target="_blank" style="color:var(--accent);">Website Carbon Calculator</a> · <a href="https://www.thegreenwebfoundation.org" target="_blank" style="color:var(--accent);">Green Web Foundation</a></p>
       </div>
     </div>
   `;
