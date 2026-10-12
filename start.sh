@@ -1,20 +1,20 @@
 #!/bin/bash
 # Start local server for SyncPrompt
-# Uses server.py for Notion API proxy + static file serving
+# Serves this folder on localhost so the microphone and teleprompter window work
 
+PORT=8080
 DIR="$(cd "$(dirname "$0")" && pwd)"
 
-echo "Starting SyncPrompt on http://localhost:8080"
+echo "Starting SyncPrompt on http://localhost:$PORT"
 echo "Press Ctrl+C to stop"
 echo ""
 
-cd "$DIR"
-python3 "$DIR/server.py" &
+python3 -m http.server "$PORT" --bind 127.0.0.1 --directory "$DIR" &
 PID=$!
 
 # Open in browser
 sleep 0.5
-open "http://localhost:8080/syncprompt-notion.html"
+open "http://localhost:$PORT/syncprompt.html"
 
 # Wait for Ctrl+C
 trap "kill $PID 2>/dev/null; echo ''; echo 'Server stopped.'; exit 0" INT

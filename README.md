@@ -12,7 +12,7 @@ Use **Safari** for the best experience (on-device speech recognition, works offl
 
 ## Local Setup (Mac)
 
-If you want to run it locally (needed for the Notion edition), everything you need is already on your Mac.
+If you want to run it locally, everything you need is already on your Mac.
 
 ### Step 1 — Download
 
@@ -39,6 +39,9 @@ The app opens automatically in your browser. That's it!
 2. Click **Start** and allow microphone access when your browser asks
 3. **Speak naturally** — the prompter follows your voice in real-time
 4. Use the **speed** and **font size** controls to adjust to your comfort
+5. Press **E twice** (or click End) to finish the take, then **Export Captions** for subtitles (SRT/VTT), YouTube chapters, or the take audio (turn on *Record audio* first)
+
+During a take the script editor is locked, and closing the teleprompter window only pauses the take. Presentation clickers and foot pedals that send **Page Down / Page Up** move one line forward / back.
 
 ### Multi-Language Support
 
@@ -63,17 +66,7 @@ SyncPrompt automatically detects and switches between languages as you speak (Ko
 | Browser doesn't open | Go to **http://localhost:8080/syncprompt.html** manually |
 | Mic not working | Click the lock/settings icon in the address bar → allow microphone |
 | Voice sync feels off | Speak closer to the mic. On Mac, Safari tends to be more reliable than Chrome |
-| "address already in use" | Another app uses port 8080. Edit `PORT = 8080` in `server.py` to 8081 |
-
-## Notion Edition
-
-There's also a **Notion-connected version** (`syncprompt-notion.html`) that loads scripts directly from a Notion database — no copy-pasting needed. You manage your scripts in Notion and the prompter pulls them in automatically.
-
-This version **only works locally** (not from the hosted GitHub Pages link) because it needs a small server to talk to the Notion API. To use it:
-
-1. Follow the local setup steps above (download + `start.sh`)
-2. Open `http://localhost:8080/syncprompt-notion.html` in your browser
-3. Enter your Notion API key and database ID in the settings panel
+| "address already in use" | Another app uses port 8080. Edit `PORT=8080` at the top of `start.sh` to 8081 |
 
 ## Browser Compatibility
 

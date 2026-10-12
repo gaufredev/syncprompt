@@ -417,6 +417,8 @@ body {
 }
 .status-dot.listening { background: var(--green); animation: pulse 1.5s infinite; }
 .status-dot.error { background: var(--red); }
+.notice-text { color: var(--accent); font-weight: 600; margin-left: 8px; }
+#script-textarea.locked { opacity: 0.6; cursor: not-allowed; }
 
 @keyframes pulse {
   0%, 100% { opacity: 1; }
@@ -468,6 +470,23 @@ body {
 .diagnostic-panel .diag-line.info { color: var(--accent); }
 
 /* Countdown overlay */
+.tp-notice {
+  display: none;
+  position: absolute;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1001;
+  padding: 8px 18px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.8);
+  border: 1px solid #5b9cf5;
+  color: #fff;
+  font: 600 22px system-ui, -apple-system, sans-serif;
+  pointer-events: none;
+}
+.tp-notice.visible { display: block; }
+
 .countdown-overlay {
   display: none;
   position: fixed;
@@ -562,11 +581,23 @@ body {
   left: 0;
   right: 0;
   height: 2px;
-  background: var(--accent);
-  opacity: 0.3;
+  background: rgba(91, 156, 245, 0.3); /* faint line; alpha (not opacity) so the arrows stay bright */
   pointer-events: none;
   z-index: 10;
 }
+.focus-line.marker-off { display: none; }
+.focus-line.marker-arrows { background: transparent; }
+.focus-line.marker-both::before, .focus-line.marker-both::after,
+.focus-line.marker-arrows::before, .focus-line.marker-arrows::after {
+  position: absolute;
+  top: var(--marker-mid, 20px);
+  transform: translateY(-50%);
+  color: #5b9cf5;
+  font-size: var(--marker-size, 22px);
+  line-height: 1;
+}
+.focus-line.marker-both::before, .focus-line.marker-arrows::before { content: '\25B6\FE0E'; left: var(--marker-inset, 4px); }
+.focus-line.marker-both::after, .focus-line.marker-arrows::after { content: '\25C0\FE0E'; right: var(--marker-inset, 4px); }
 
 /* V-margin mask: black bars top and bottom */
 .v-mask-top, .v-mask-bottom {
@@ -701,7 +732,11 @@ const DEFAULT_SETTINGS = {
   showChapterDividers: true,
   theme: 'dark',
   scriptLangs: [], // empty = auto-detect. e.g. ['ko','fr'] = only these languages
+  readingMarker: 'both', // 'both' | 'arrows' | 'line' | 'off'
+  recordAudio: false,
 };
+
+const APP_VERSION = 'v0.7.3'; // Bump with every change — shown in the header and in debug logs
 
 // All supported languages for the selector
 const AVAILABLE_LANGS = [
@@ -722,7 +757,7 @@ let scriptText = localStorage.getItem('tp_script') || '';
 let chapters = [];
 let currentLineIndex = 0;
 let isScrolling = false;
-let isVoiceActive = false;
+let isVoiceActive = !!(window.SpeechRecognition || window.webkitSpeechRecognition); // On by default where supported
 let isStarted = false;
 let scrollY = 0;
 let targetScrollY = 0;
@@ -730,13 +765,13 @@ let manualScrollSpeed = 0;
 let elapsedSeconds = 0;
 let elapsedInterval = null;
 let countdownTimer = null;
-let countdownCancelled = false;
+let isCountingDown = false; // Blocks a second start while the 3-2-1 runs
+let countdownGen = 0;       // Bumped on cancel so a countdown waiting for the mic can't resume
 let teleprompterWindow = null;
 let bc = null;
 
 // Voice recognition
 let recognition = null;
-let isLanguageSwitching = false;
 let scriptSyllables = [];
 let scriptWords = []; // Word-level index: [{text, lineIndex, wordIndex, lang, sylStart, sylEnd}]
 let scriptLineLangs = []; // Language per line: ['ko', 'en', ...]
@@ -744,7 +779,26 @@ let currentAlignPos = 0;
 let currentWordIndex = 0; // Track current word position
 let currentRecogLang = 'ko-KR'; // Current recognition language
 let lastConsumedSylCount = 0; // Track consumed transcript syllables
-let lastMatchTime = Date.now();
+let lastMatchTime = Date.now();     // Last match OR forced advance (unstick/early switch) — paces unstick
+let lastRealMatchTime = Date.now(); // Last real match or re-anchor — drives the "stuck > 8s" relaxations
+let lastRealMatchWord = 0;          // Word of that real match — unstick/early-switch moves past it are provisional
+let provisionalFrom = -1;           // captionTimeline index where guessed (provisional) line entries start
+
+// A confirmed position (real match, re-anchor, start): stuck clocks and the correction floor start here
+function markRealPosition() {
+  lastRealMatchTime = Date.now();
+  lastRealMatchWord = currentWordIndex;
+  provisionalFrom = -1;
+}
+
+// Unstick / early switch only guess the position — remember where their caption entries start
+function recordProvisionalLine(lineIndex) {
+  if (provisionalFrom < 0) provisionalFrom = captionTimeline.length;
+  recordLineTransition(lineIndex);
+}
+let lastResultAt = 0;               // Last recognition result event — silence gaps are not counted as stuck
+let lastPermissionErrorAt = 0;
+let transcriptLog = [];             // Every recognition result of the take (Debug mode) — for offline replay
 let lastLanguageSwitchTime = 0;
 let lastTranscriptContent = ''; // For Chrome stale recognition watchdog
 let lastTranscriptTime = Date.now();
@@ -760,6 +814,7 @@ function recordLineTransition(lineIndex) {
   const ms = Date.now() - sessionStats.startTime;
   if (captionTimeline.length > 0 && captionTimeline[captionTimeline.length - 1].lineIndex === lineIndex) return;
   captionTimeline.push({ lineIndex, ms });
+  saveTakeState();
   if (settings.diagnosticMode) {
     const allLines = chapters.flatMap(ch => ch.lines);
     const lineText = allLines[lineIndex]?.text || '';
@@ -785,10 +840,13 @@ function loadSettings() {
   return { ...DEFAULT_SETTINGS };
 }
 
-function saveSettings() {
+// Settings the prompter never reads — changing them must not re-render it
+const CONTROL_ONLY_SETTINGS = ['theme', 'showPace', 'targetWpm', 'diagnosticMode', 'countdownEnabled', 'voiceEngine', 'scrollSpeed', 'recordAudio'];
+
+function saveSettings(changedKey) {
   try { localStorage.setItem('tp_settings', JSON.stringify(settings)); } catch {}
+  if (changedKey && CONTROL_ONLY_SETTINGS.includes(changedKey)) return;
   broadcastMessage({ type: 'settings', settings });
-  broadcastMessage({ type: 'render' });
 }
 
 function saveScript() {
@@ -901,6 +959,114 @@ function extractSyllables(text) {
   return syls;
 }
 
+// ---- Numbers → spoken words (matching only, display unchanged) ----
+// Script and transcript are both converted, so "2026년" matches "이천이십육년" either way round.
+const KO_DIGITS = ['', '일', '이', '삼', '사', '오', '육', '칠', '팔', '구'];
+function koNumber(n) {
+  if (n === 0) return '영';
+  const bigUnits = ['', '만', '억', '조'];
+  let out = '';
+  for (let group = 0; n > 0; group++, n = Math.floor(n / 10000)) {
+    const part = n % 10000;
+    if (part === 0) continue;
+    const digits = [Math.floor(part / 1000), Math.floor(part / 100) % 10, Math.floor(part / 10) % 10, part % 10];
+    const units = ['천', '백', '십', ''];
+    let p = '';
+    digits.forEach((d, i) => { if (d) p += (d === 1 && i < 3 ? '' : KO_DIGITS[d]) + units[i]; }); // 십, not 일십
+    if (group === 1 && part === 1) p = ''; // 만, not 일만
+    out = p + bigUnits[group] + out;
+  }
+  return out;
+}
+
+const FR_UNITS = ['zéro', 'un', 'deux', 'trois', 'quatre', 'cinq', 'six', 'sept', 'huit', 'neuf', 'dix',
+  'onze', 'douze', 'treize', 'quatorze', 'quinze', 'seize'];
+const FR_TENS = { 2: 'vingt', 3: 'trente', 4: 'quarante', 5: 'cinquante', 6: 'soixante' };
+function frBelow100(n) {
+  if (n <= 16) return FR_UNITS[n];
+  if (n < 20) return 'dix-' + FR_UNITS[n - 10];
+  const t = Math.floor(n / 10), u = n % 10;
+  if (t === 7) return 'soixante' + (u === 1 ? ' et ' : '-') + frBelow100(10 + u);
+  if (t === 8) return u === 0 ? 'quatre-vingts' : 'quatre-vingt-' + FR_UNITS[u];
+  if (t === 9) return 'quatre-vingt-' + frBelow100(10 + u);
+  return FR_TENS[t] + (u === 0 ? '' : u === 1 ? ' et un' : '-' + FR_UNITS[u]);
+}
+function frBelow1000(n) {
+  const h = Math.floor(n / 100), r = n % 100;
+  let out = h ? (h > 1 ? FR_UNITS[h] + ' ' : '') + 'cent' + (h > 1 && r === 0 ? 's' : '') : '';
+  if (r) out += (out ? ' ' : '') + frBelow100(r);
+  return out;
+}
+function frNumber(n) {
+  if (n === 0) return 'zéro';
+  const b = Math.floor(n / 1e9), m = Math.floor(n / 1e6) % 1000, k = Math.floor(n / 1000) % 1000, r = n % 1000;
+  const parts = [];
+  if (b) parts.push(frBelow1000(b) + ' milliard' + (b > 1 ? 's' : ''));
+  if (m) parts.push(frBelow1000(m) + ' million' + (m > 1 ? 's' : ''));
+  if (k) parts.push(k === 1 ? 'mille' : frBelow1000(k) + ' mille');
+  if (r) parts.push(frBelow1000(r));
+  return parts.join(' ');
+}
+
+const EN_UNITS = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven',
+  'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen'];
+const EN_TENS = ['', '', 'twenty', 'thirty', 'forty', 'fifty', 'sixty', 'seventy', 'eighty', 'ninety'];
+function enBelow1000(n) {
+  const h = Math.floor(n / 100), r = n % 100;
+  let out = h ? EN_UNITS[h] + ' hundred' : '';
+  if (r) out += (out ? ' ' : '') + (r < 20 ? EN_UNITS[r] : EN_TENS[Math.floor(r / 10)] + (r % 10 ? '-' + EN_UNITS[r % 10] : ''));
+  return out;
+}
+function enNumber(n) {
+  if (n === 0) return 'zero';
+  const b = Math.floor(n / 1e9), m = Math.floor(n / 1e6) % 1000, k = Math.floor(n / 1000) % 1000, r = n % 1000;
+  const parts = [];
+  if (b) parts.push(enBelow1000(b) + ' billion');
+  if (m) parts.push(enBelow1000(m) + ' million');
+  if (k) parts.push(enBelow1000(k) + ' thousand');
+  if (r) parts.push(enBelow1000(r));
+  return parts.join(' ');
+}
+
+const NUMBER_WORDS = { ko: koNumber, fr: frNumber, en: enNumber };
+const DECIMAL_WORD = { ko: '점', fr: 'virgule', en: 'point' };
+const PERCENT_WORD = { ko: '퍼센트', fr: 'pour cent', en: 'percent' };
+
+function numbersToWords(text, lang) {
+  const say = NUMBER_WORDS[lang];
+  if (!say || !/\d/.test(text)) return text;
+  text = text
+    .replace(/(\d)[ \u00A0\u202F](?=\d{3}(?!\d))/g, '$1') // "10 000" (French thousands spaces)
+    .replace(/(\d)[ \u00A0\u202F]%/g, '$1%');              // "3,5 %"
+  return text.replace(/\d+(?:[.,]\d+)*%?/g, (m, offset, str) => {
+    // Korean "1만" / "1천" is read 만 / 천, like "10,000" → 만
+    if (lang === 'ko' && m === '1' && '십백천만'.includes(str[offset + 1] || '')) return '';
+    const pct = m.endsWith('%');
+    const num = pct ? m.slice(0, -1) : m;
+    let intPart = num, dec = '';
+    if (/^\d{1,3}(?:[.,]\d{3})+$/.test(num)) {
+      intPart = num.replace(/[.,]/g, ''); // 1,000 / 1.000 thousands separators
+    } else if (/[.,]/.test(num)) {
+      const d = num.match(/^(\d+)[.,](\d+)$/);
+      if (!d) return m;
+      intPart = d[1]; dec = d[2];
+    }
+    if (intPart.length > 12) return m;
+    let out = intPart.length > 1 && intPart[0] === '0'
+      ? [...intPart].map(c => (lang === 'ko' && c === '0') ? '공' : say(+c)).join(' ') // 010 → digit by digit (ko: 0 → 공, as in 공일)
+      : say(parseInt(intPart, 10));
+    if (dec) out += ' ' + DECIMAL_WORD[lang] + ' ' + [...dec].map(c => say(+c)).join(' ');
+    if (pct) out += ' ' + PERCENT_WORD[lang];
+    return out;
+  });
+}
+
+// Matchable units of a heard transcript, with numbers spelled out in the recognizer's language
+function heardUnits(transcript) {
+  const cleaned = transcript.replace(/\d{13,}/g, ''); // Safari sometimes "hears" 1000000000… — noise
+  return extractSyllables(numbersToWords(cleaned, currentRecogLang.slice(0, 2)));
+}
+
 function buildSyllableIndex(chapters) {
   const syls = [];
   let lineIdx = 0;
@@ -920,7 +1086,7 @@ function buildSyllableIndex(chapters) {
         // Skip @mentions and note/stage direction lines — speech recognition will never produce these
         const isAtMention = w.startsWith('@');
         if (!isAtMention && !lineIsNote) {
-          for (const char of w) {
+          for (const char of numbersToWords(w, lang)) {
             const m = extractMatchableChar(char);
             if (m) {
               syls.push({ char: m, lineIndex: lineIdx, wordIndex: wordIdx });
@@ -957,9 +1123,34 @@ function lcsLength(a, b) {
   return prev[n];
 }
 
+// How many script chars (from the start of b) are needed to reach the full LCS with a.
+// b[result - 1] is the last script char that actually matched what was heard.
+function lcsMatchEnd(a, b) {
+  const m = a.length, n = b.length;
+  if (m === 0 || n === 0) return 0;
+  const prev = new Array(n + 1).fill(0);
+  const curr = new Array(n + 1).fill(0);
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      if (a[i-1] === b[j-1]) {
+        curr[j] = prev[j-1] + 1;
+      } else {
+        curr[j] = Math.max(prev[j], curr[j-1]);
+      }
+    }
+    for (let j = 0; j <= n; j++) { prev[j] = curr[j]; curr[j] = 0; }
+  }
+  let j = 1;
+  while (j < n && prev[j] < prev[n]) j++;
+  return j;
+}
+
+// Heard syllables kept after each match, so the next match can re-anchor on them
+const MATCH_OVERLAP = 3;
+
 function findBestMatch(transcript, scriptSyls, currentPos, stuckMs) {
   stuckMs = stuckMs || 0;
-  const allSyls = extractSyllables(transcript);
+  const allSyls = heardUnits(transcript);
 
   // Safety: if transcript shrank (Safari revision or new session), reset consumed
   if (allSyls.length < lastConsumedSylCount) {
@@ -973,78 +1164,106 @@ function findBestMatch(transcript, scriptSyls, currentPos, stuckMs) {
 
   // Word-level search window: wider when stuck for a long time
   const WORD_WINDOW = stuckMs > 8000 ? 25 : 15;
-  const startWord = currentWordIndex;
+  // After unstick/early-switch moved past the last real match, a real match may pull the position back
+  // (e.g. the speaker ad-libbed and returned to where they were). Never before the last real match.
+  const floorWord = Math.min(currentWordIndex, lastRealMatchWord);
+  const startWord = floorWord;
   const endWord = Math.min(scriptWords.length, currentWordIndex + WORD_WINDOW);
 
-  // Get syllable range for this word window
-  const windowStart = startWord < scriptWords.length ? scriptWords[startWord].sylStart : scriptSyls.length;
+  // Get syllable range for this word window.
+  // Start a few syllables early: the overlap kept from the last match sits at or just before the current word.
+  const windowStart = startWord < scriptWords.length ? Math.max(0, scriptWords[startWord].sylStart - MATCH_OVERLAP) : scriptSyls.length;
   const windowEnd = endWord < scriptWords.length ? scriptWords[endWord].sylStart : scriptSyls.length;
 
   if (windowStart >= windowEnd) return null;
 
   let bestScore = 0;
-  let bestPos = currentPos;
-  let bestWordIdx = -1;
-  let bestLine = -1;
+  let bestEff = 0;      // bestScore minus the penalty for pulling back
+  let bestP = -1;
+  let bestSyls = null;
   let bestTry = 0;
+  let bestHeardEnd = 0; // Where the winning heard slice ends inside allSyls
+
+  // French/English are matched letter by letter, where chance matches are common — be stricter
+  const isLatin = (syls) => syls.filter(c => c >= 'a' && c <= 'z').length >= 0.7 * syls.length;
 
   // Helper: try matching a set of syllables against the word window
-  function tryMatch(syls, tryNum) {
+  function tryMatch(syls, tryNum, heardEnd) {
     const len = syls.length;
     if (len < 2) return;
+    const latin = isLatin(syls);
     for (let p = windowStart; p <= windowEnd - len; p++) {
       const slice = scriptSyls.slice(p, p + len).map(s => s.char);
       const score = lcsLength(syls, slice);
       const normalized = score / len;
-      const threshold = len < 10 ? 0.5 : 0.4;
+      const threshold = latin ? (len < 10 ? 0.65 : 0.55) : (len < 10 ? 0.5 : 0.4);
 
-      if (normalized > bestScore && normalized > threshold) {
+      if (normalized > threshold) { // must also beat the best so far (bestEff, below)
+        // Jump cap and confidence rule are measured at the middle of the slice (tuned values)
         const midIdx = Math.min(p + Math.floor(len / 2), scriptSyls.length - 1);
         const candidateWord = scriptSyls[midIdx]?.wordIndex ?? -1;
-        const candidateLine = scriptSyls[midIdx]?.lineIndex ?? -1;
+        const lastIdx = Math.min(p + len - 1, scriptSyls.length - 1);
 
-        // NEVER go backward
-        if (candidateWord < currentWordIndex) continue;
+        // Never go back before the last real match
+        const endWord = scriptSyls[lastIdx]?.wordIndex ?? -1;
+        if (endWord < floorWord) continue;
+        // Pulling back behind the current (guessed) position needs a clearly better match
+        const backward = endWord < currentWordIndex;
+        const eff = backward ? normalized - 0.1 : normalized;
+        if (eff <= bestEff) continue;
 
-        // Cap max jump (relaxed when stuck for a long time)
+        // Words moved (either way); forward moves are capped (relaxed when stuck for a long time)
         const maxJump = stuckMs > 8000 ? 10 : 5;
         let realJump = 0;
-        for (let w = currentWordIndex; w < candidateWord; w++) {
+        for (let w = Math.min(currentWordIndex, candidateWord); w < Math.max(currentWordIndex, candidateWord); w++) {
           if (w < scriptWords.length && scriptWords[w].sylEnd > scriptWords[w].sylStart) realJump++;
         }
-        if (realJump > maxJump) continue;
+        if (candidateWord > currentWordIndex && realJump > maxJump) continue;
 
         // Require higher confidence when skipping words (prevents false matches on "de", "la", etc.)
-        // Relaxed when stuck — we need to recover
-        if (stuckMs < 8000 && realJump >= 2 && normalized < 0.55) continue;
+        // Relaxed when stuck (we need to recover) but never dropped — ad-libs could otherwise jump ahead
+        const jumpFloor = latin ? (stuckMs < 8000 ? 0.65 : 0.6) : (stuckMs < 8000 ? 0.55 : 0.5);
+        if (realJump >= 2 && normalized < jumpFloor) continue;
+        if (backward && normalized < jumpFloor + 0.1) continue;
 
         bestScore = normalized;
-        bestPos = p + len;
-        bestWordIdx = candidateWord;
-        bestLine = candidateLine;
+        bestEff = eff;
+        bestP = p;
+        bestSyls = syls;
         bestTry = tryNum;
+        bestHeardEnd = heardEnd;
       }
     }
   }
 
   // Try 1: Last 15 new syllables (what was just spoken)
   const MATCH_LEN = 15;
-  tryMatch(newSyls.length > MATCH_LEN ? newSyls.slice(-MATCH_LEN) : newSyls, 1);
+  tryMatch(newSyls.length > MATCH_LEN ? newSyls.slice(-MATCH_LEN) : newSyls, 1, allSyls.length);
 
   // Try 2: First 10 new syllables (right after last match)
   if (bestScore < 0.5 && newSyls.length > 8) {
-    tryMatch(newSyls.slice(0, 10), 2);
+    tryMatch(newSyls.slice(0, 10), 2, lastConsumedSylCount + Math.min(10, newSyls.length));
   }
 
-  // Try 3: Short match — last 6 syllables for quick response
-  if (bestScore < 0.5 && newSyls.length >= 4) {
-    tryMatch(newSyls.slice(-6), 3);
+  // Try 3: Short match — last 6 syllables for quick response (too loose for letter-by-letter Latin text)
+  if (bestScore < 0.5 && newSyls.length >= 4 && !isLatin(newSyls.slice(-6))) {
+    tryMatch(newSyls.slice(-6), 3, allSyls.length);
   }
 
-  if (bestScore > 0.4 && bestWordIdx >= 0) {
-    // Consume aggressively — keep only 3 syllable overlap
-    lastConsumedSylCount = Math.max(0, allSyls.length - 3);
-    return { pos: bestPos, wordIndex: bestWordIdx, lineIndex: bestLine, confidence: bestScore, tryNum: bestTry };
+  if (bestScore > 0.4 && bestP >= 0) {
+    // Position = last script syllable that actually matched what was heard (where the speaker is now)
+    const slice = scriptSyls.slice(bestP, bestP + bestSyls.length).map(s => s.char);
+    const endIdx = bestP + lcsMatchEnd(bestSyls, slice) - 1;
+    let wordIndex = scriptSyls[endIdx].wordIndex;
+    let lineIndex = scriptSyls[endIdx].lineIndex;
+    if (wordIndex < floorWord) {
+      wordIndex = floorWord;
+      lineIndex = scriptWords[wordIndex].lineIndex;
+    }
+    // Consume up to the end of the matched heard slice, keeping a small overlap.
+    // (After a Try-2 match, what was heard after it stays for the next result instead of being dropped.)
+    lastConsumedSylCount = Math.max(lastConsumedSylCount, bestHeardEnd - MATCH_OVERLAP);
+    return { pos: endIdx + 1, wordIndex, lineIndex, confidence: bestScore, tryNum: bestTry };
   }
   return null;
 }
@@ -1060,6 +1279,7 @@ function resumeTimer() {
   elapsedInterval = setInterval(() => {
     elapsedSeconds++;
     updateTimerDisplay();
+    if (isStarted && elapsedSeconds % 5 === 0) saveTakeState();
   }, 1000);
 }
 
@@ -1114,6 +1334,7 @@ function initControlWindow() {
       currentAlignPos = findSyllablePosForLine(msg.lineIndex);
       lastConsumedSylCount = 0; // Reset consumed syllables on re-anchor
       lastMatchTime = Date.now(); // Reset stuck timer on re-anchor
+      markRealPosition();
       // Use highlightWord in voice mode so word dimming updates correctly
       if (isVoiceActive) {
         broadcastMessage({ type: 'highlightWord', wordIndex: currentWordIndex, lineIndex: msg.lineIndex });
@@ -1123,14 +1344,18 @@ function initControlWindow() {
       updateActiveChapter();
     } else if (msg.type === 'toggleStartFromTP') {
       toggleStart();
+    } else if (msg.type === 'stepLineFromTP') {
+      stepLine(msg.delta);
+    } else if (msg.type === 'tpReady') {
+      sendFullStateToPrompter();
     } else if (msg.type === 'endSessionFromTP') {
-      endSession();
+      confirmThenRun('e', endSession);
     } else if (msg.type === 'toggleVoiceFromTP') {
       toggleVoiceMode();
     } else if (msg.type === 'toggleMirrorFromTP') {
       toggleSetting('mirrorMode', document.getElementById('btn-mirror'));
     } else if (msg.type === 'resetFromTP') {
-      resetToTop();
+      confirmThenRun('r', resetToTop);
     } else if (msg.type === 'prevChapterFromTP') {
       jumpToChapter(getCurrentChapterIndex() - 1);
     } else if (msg.type === 'nextChapterFromTP') {
@@ -1156,6 +1381,7 @@ function initControlWindow() {
   bindControlEvents();
   updateScriptInfo();
   parseAndBroadcastScript();
+  restoreLastTake();
   updateButtonStates();
 }
 
@@ -1180,14 +1406,14 @@ function buildControlUI() {
   return `
     <div class="control-window">
       <div class="top-bar">
-        <h1>SyncPrompt <span class="version-tag">v0.6.3</span></h1>
+        <h1>SyncPrompt <span class="version-tag">${APP_VERSION}</span></h1>
         <button onclick="openTeleprompterWindow()" class="primary" id="open-tp-btn">Open Teleprompter</button>
         <span class="separator"></span>
         <button onclick="toggleStart()" id="start-btn" disabled>Start</button>
         <button onclick="endSession()" id="end-btn" class="end-session" disabled>End</button>
         <button onclick="toggleManualScroll()" id="scroll-btn" disabled>Auto Scroll</button>
         <span class="separator"></span>
-        <button onclick="toggleVoiceMode()" id="voice-mode-btn" class="voice-mode">Voice: OFF</button>
+        <button onclick="toggleVoiceMode()" id="voice-mode-btn" class="voice-mode${isVoiceActive ? ' on' : ''}">Voice: ${isVoiceActive ? 'ON' : 'OFF'}</button>
         <span class="separator"></span>
         <button onclick="resetToTop()">Reset</button>
         <span class="separator"></span>
@@ -1206,7 +1432,7 @@ function buildControlUI() {
           <div class="control-row">
             <label>Font</label>
             <select onchange="updateSetting('fontFamily', this.value)">
-              ${['Arial', 'Georgia', 'Verdana', 'Tahoma', 'Courier New', 'Times New Roman', 'Helvetica', 'Trebuchet MS'].map(f =>
+              ${['Arial', 'Apple SD Gothic Neo', 'Noto Sans KR', 'Nanum Gothic', 'Malgun Gothic', 'Georgia', 'Verdana', 'Tahoma', 'Courier New', 'Times New Roman', 'Helvetica', 'Trebuchet MS'].map(f =>
                 `<option value="${f}" ${settings.fontFamily === f ? 'selected' : ''}>${f}</option>`
               ).join('')}
             </select>
@@ -1240,6 +1466,14 @@ function buildControlUI() {
             <input type="range" min="10" max="60" value="${settings.focusLinePercent}" oninput="updateSetting('focusLinePercent', +this.value)">
             <span class="value" id="v-focusLinePercent">${settings.focusLinePercent}%</span>
           </div>
+          <div class="control-row">
+            <label>Reading marker</label>
+            <select onchange="updateSetting('readingMarker', this.value)">
+              ${[['both', 'Line + arrows'], ['arrows', 'Arrows'], ['line', 'Line'], ['off', 'Off']].map(([v, l]) =>
+                `<option value="${v}" ${settings.readingMarker === v ? 'selected' : ''}>${l}</option>`
+              ).join('')}
+            </select>
+          </div>
         </div>
 
         <div class="control-group">
@@ -1264,6 +1498,10 @@ function buildControlUI() {
           <div class="control-row">
             <label>Countdown</label>
             <button class="toggle-btn ${settings.countdownEnabled ? 'on' : ''}" onclick="toggleSetting('countdownEnabled', this)">3-2-1</button>
+          </div>
+          <div class="control-row">
+            <label>Record audio</label>
+            <button class="toggle-btn ${settings.recordAudio ? 'on' : ''}" onclick="toggleSetting('recordAudio', this)" title="Record the mic during a take (stays on this Mac) — export it after ending">Record</button>
           </div>
           <div class="control-row">
             <label>Diagnostic</label>
@@ -1302,7 +1540,7 @@ function buildControlUI() {
       <div class="main-area">
         <div class="script-editor">
           <div class="editor-toolbar">
-            <button onclick="loadScriptFile()">Load .txt</button>
+            <button onclick="loadScriptFile()" id="btn-load-txt">Load .txt</button>
             <button onclick="downloadScript()">Save .txt</button>
             <button id="btn-export-captions" disabled onclick="showExportMenu(this)" title="Export captions after a session">Export Captions ▾</button>
             <span class="info" id="script-info">${wordCount} words | Est. ${estTime} @ ${settings.targetWpm} wpm</span>
@@ -1314,6 +1552,7 @@ function buildControlUI() {
           <div class="diag-toolbar">
             <button onclick="copyDiagLog()">Copy Log</button>
             <button onclick="clearDiagLog()">Clear</button>
+            <button onclick="downloadTranscriptLog()" title="Every recognition result of the last take, for replaying and tuning">Save take transcript</button>
             <span class="diag-stats" id="diag-stats"></span>
           </div>
           <div class="diag-log" id="diag-log">
@@ -1326,6 +1565,7 @@ function buildControlUI() {
         <div class="status-item">
           <span class="status-dot" id="status-dot"></span>
           <span id="status-text">Ready</span>
+          <span id="notice-text" class="notice-text"></span>
         </div>
         <div class="status-item">
           <span>Mic:</span>
@@ -1381,7 +1621,7 @@ function buildControlUI() {
 
         <h3>Voice Sync</h3>
         <p><strong>Voice mode</strong> makes the teleprompter follow your voice instead of scrolling at a fixed speed. It listens through your microphone, recognizes what you're saying, and matches it to your script — automatically scrolling to keep up with where you are.</p>
-        <p>To use it: click <strong>Voice: OFF</strong> to enable voice mode (it turns green), then press <kbd>Space</kbd> to start. A 3-2-1 countdown plays, then the app begins listening. Speak naturally — the teleprompter will follow along. At chapter boundaries, use <kbd>←</kbd> <kbd>→</kbd> to jump manually.</p>
+        <p>Voice mode is on by default (the <strong>Voice: ON</strong> button is green) — just press <kbd>Space</kbd> to start. A 3-2-1 countdown plays, then the app begins listening. Click the button (or press <kbd>V</kbd>) to turn voice off. Speak naturally — the teleprompter will follow along. At chapter boundaries, use <kbd>←</kbd> <kbd>→</kbd> to jump manually.</p>
         <p>Without voice mode, you can still use <strong>Auto Scroll</strong> for a fixed-speed scroll, or scroll manually.</p>
 
         <h3>Script Formatting</h3>
@@ -1405,8 +1645,19 @@ function buildControlUI() {
         <p>Click the ★ next to any line to bookmark it. Press <kbd>B</kbd> to jump to the next bookmarked line. Great for marking tricky sections to practice.</p>
 
         <h3>Caption Export (SRT/VTT)</h3>
-        <p>During any session (voice or manual scroll), SyncPrompt records when each line is reached. After ending a session with <kbd>E</kbd> or the End button, click <strong>Export Captions</strong> to download a timed subtitle file (SRT or VTT) for use in video editors like Premiere, DaVinci Resolve, CapCut, or YouTube Studio.</p>
+        <p>During any session (voice or manual scroll), SyncPrompt records when each line is reached. After ending a session (press <kbd>E</kbd> twice, or the End button), click <strong>Export Captions</strong> to download a timed subtitle file (SRT or VTT) for use in video editors like Premiere, DaVinci Resolve, CapCut, or YouTube Studio.</p>
         <p>Each script line becomes one subtitle entry. Note lines and chapter markers are automatically skipped. SRT numbers are shown next to each line in the script list.</p>
+        <p>The same menu has <strong>YouTube chapters</strong> — a ready-to-paste list like <code>0:00 Intro</code> built from your <code>## Title</code> chapters and when you reached them. Times start when the take starts, like the subtitles.</p>
+        <p>Turn on <strong>Record audio</strong> (Options) to also keep a recording of the mic during the take. Export it from the same menu after ending. It never leaves your Mac and is lost if the page reloads.</p>
+
+        <h3>Protecting Your Take</h3>
+        <ul>
+          <li>During a take the editor is <strong>locked</strong>, so a stray key can't change the script.</li>
+          <li><kbd>E</kbd> and <kbd>R</kbd> must be pressed <strong>twice</strong> (within 2.5 seconds) to end or reset a running take. The End and Reset buttons still work with one click.</li>
+          <li>Closing the teleprompter window <strong>pauses</strong> the take. Reopen it with <kbd>T</kbd> and press <kbd>Space</kbd> to continue the same take — to start a new one, end the take first.</li>
+          <li>If this page is reloaded mid-take, the browser asks first. If it reloads anyway, the captions recorded so far are restored and can still be exported.</li>
+          <li>Starting a new take replaces the previous take's captions and audio — export them first.</li>
+        </ul>
 
         <h3>Rehearsal Tracker</h3>
         <p>Each time you run a voice session, your stats (match rate, WPM, coverage) are saved. You can see your practice count and best score in the editor toolbar.</p>
@@ -1414,19 +1665,21 @@ function buildControlUI() {
         <h3>Keyboard Shortcuts</h3>
         <ul>
           <li><kbd>Space</kbd> — Start / Pause / Resume session</li>
-          <li><kbd>E</kbd> — End session (finalize SRT, log stats)</li>
+          <li><kbd>E</kbd> — End session (press twice during a take)</li>
+          <li><kbd>Page Down</kbd> <kbd>Page Up</kbd> — Next / previous line (presentation clickers, foot pedals)</li>
           <li><kbd>V</kbd> — Toggle voice mode</li>
           <li><kbd>T</kbd> — Open teleprompter</li>
           <li><kbd>←</kbd> <kbd>→</kbd> — Previous / Next chapter</li>
           <li><kbd>↑</kbd> <kbd>↓</kbd> — Manual scroll nudge</li>
           <li><kbd>+</kbd> <kbd>-</kbd> — Font size</li>
-          <li><kbd>B</kbd> — Jump to next bookmark</li>
+          <li><kbd>B</kbd> — Jump to next bookmark (ignored while a take is running)</li>
           <li><kbd>F</kbd> — Toggle fullscreen</li>
           <li><kbd>M</kbd> — Toggle mirror mode</li>
-          <li><kbd>R</kbd> — Reset to top</li>
+          <li><kbd>R</kbd> — Reset to top (press twice during a take)</li>
           <li><kbd>?</kbd> — Open this help</li>
           <li><kbd>Esc</kbd> — Close help / Cancel countdown</li>
         </ul>
+        <p style="font-size:11px;color:var(--text-dim);">Shortcuts with <kbd>Cmd</kbd>, <kbd>Ctrl</kbd> or <kbd>Option</kbd> are left to the browser (Cmd+R reloads, Cmd+F finds).</p>
 
         <h3>Open Source</h3>
         <p>SyncPrompt is open source. Found a bug? Have a feature idea? Contributions and feedback are welcome.</p>
@@ -1553,12 +1806,97 @@ function bindControlEvents() {
   // Check periodically if teleprompter window is still open
   setInterval(updateButtonStates, 1000);
 
-  // Close teleprompter window when control window closes
-  window.addEventListener('beforeunload', () => {
+  // During a take, ask before leaving (Cmd+R, closing the window). The prompter is closed in
+  // 'pagehide' instead, so it stays open if the user cancels.
+  window.addEventListener('beforeunload', (e) => {
+    if (isStarted) {
+      saveTakeState();
+      e.preventDefault();
+      e.returnValue = '';
+    }
+  });
+  window.addEventListener('pagehide', () => {
     if (teleprompterWindow && !teleprompterWindow.closed) {
       teleprompterWindow.close();
     }
   });
+}
+
+// ---- Take protection ----
+const REPEATABLE_KEYS = ['ArrowUp', 'ArrowDown', '+', '=', '-', '_']; // Nudge and font size may auto-repeat
+// E and R end the take, so during a session they need a second press within 2.5s
+let pendingConfirm = null; // { key, at }
+function confirmThenRun(key, action) {
+  if (!isStarted) { action(); return; }
+  const now = Date.now();
+  if (pendingConfirm && pendingConfirm.key === key && now - pendingConfirm.at < 2500) {
+    pendingConfirm = null;
+    showNotice(null);
+    action();
+    return;
+  }
+  pendingConfirm = { key, at: now };
+  showNotice(key === 'e' ? 'Press E again to end the take' : 'Press R again to reset — this ends the take', 2500);
+}
+
+// Short message in the control status bar and as a small toast on the prompter
+let noticeTimer = null;
+function showNotice(text, ms) {
+  const el = document.getElementById('notice-text');
+  if (el) el.textContent = text || '';
+  broadcastMessage({ type: 'notice', text: text || null });
+  clearTimeout(noticeTimer);
+  if (text) noticeTimer = setTimeout(() => showNotice(null), ms || 2500);
+}
+
+// No script edits, file loads or language changes mid-take (they reflow the prompter)
+function setEditorLocked(locked) {
+  const ta = document.getElementById('script-textarea');
+  if (ta) {
+    ta.readOnly = locked;
+    ta.classList.toggle('locked', locked);
+    ta.title = locked ? 'Locked during a take — press E twice or End to edit' : '';
+    if (locked) ta.blur();
+  }
+  const loadBtn = document.getElementById('btn-load-txt');
+  if (loadBtn) loadBtn.disabled = locked;
+  document.querySelectorAll('.lang-chip input').forEach(cb => { cb.disabled = locked; });
+}
+
+// Captions of the current/last take survive a control-window reload
+const LAST_TAKE_KEY = 'tp_last_take';
+function saveTakeState() {
+  if (!sessionStats.startTime || captionTimeline.length === 0) return;
+  try {
+    localStorage.setItem(LAST_TAKE_KEY, JSON.stringify({
+      scriptHash: getScriptHash(),
+      captionTimeline,
+      sessionMs: isStarted ? Date.now() - sessionStats.startTime : captionSessionEndMs,
+      ended: !isStarted,
+      currentLineIndex,
+      savedAt: Date.now(),
+    }));
+  } catch {}
+}
+
+function restoreLastTake() {
+  let t = null;
+  try { t = JSON.parse(localStorage.getItem(LAST_TAKE_KEY)); } catch {}
+  if (!t || t.scriptHash !== getScriptHash() || !Array.isArray(t.captionTimeline) || t.captionTimeline.length === 0) return;
+  if (Date.now() - t.savedAt > 24 * 3600 * 1000) return; // Older than a day — not worth restoring
+  captionTimeline = t.captionTimeline;
+  captionSessionEndMs = t.sessionMs;
+  const exportBtn = document.getElementById('btn-export-captions');
+  if (exportBtn) exportBtn.disabled = false;
+  if (!t.ended) {
+    // Interrupted by a reload: also go back to where the take stopped
+    currentLineIndex = t.currentLineIndex || 0;
+    currentWordIndex = findWordIndexForLine(currentLineIndex);
+    currentAlignPos = findSyllablePosForLine(currentLineIndex);
+    const text = document.getElementById('status-text');
+    if (text) text.textContent = 'Last take was interrupted — its captions are restored and can be exported';
+    addStateLine(`Restored interrupted take (${captionTimeline.length} caption lines, line ${currentLineIndex})`);
+  }
 }
 
 function updateButtonStates() {
@@ -1575,8 +1913,13 @@ function updateButtonStates() {
       openBtn.classList.remove('primary');
     } else {
       openBtn.classList.add('primary');
-      // If teleprompter was closed while running, stop everything
-      if (isStarted) stopEverything();
+      // Teleprompter closed mid-take: pause (don't end) so the take can continue after reopening
+      if (isCountingDown) cancelCountdown();
+      if (isStarted && !isPaused) {
+        pauseSession();
+        const text = document.getElementById('status-text');
+        if (text) text.textContent = 'Teleprompter closed — press T to reopen, then Space to resume';
+      }
     }
   }
 }
@@ -1592,6 +1935,14 @@ function updateScriptInfo() {
 function parseAndBroadcastScript() {
   chapters = parseChapters(scriptText);
   scriptSyllables = buildSyllableIndex(chapters);
+  if (!isStarted) {
+    // The prompter goes back to the top on a new script — keep the matcher in step
+    currentLineIndex = 0;
+    currentWordIndex = 0;
+    currentAlignPos = 0;
+    lastConsumedSylCount = 0;
+    markRealPosition();
+  }
   loadBookmarks();
   updateChapterList();
   updateRehearsalDisplay();
@@ -1645,6 +1996,7 @@ function jumpToLine(lineIndex) {
   currentAlignPos = findSyllablePosForLine(lineIndex);
   lastConsumedSylCount = 0;
   lastMatchTime = Date.now();
+  markRealPosition();
 
   if (isVoiceActive) {
     broadcastMessage({ type: 'highlightWord', wordIndex: currentWordIndex, lineIndex: lineIndex });
@@ -1662,6 +2014,16 @@ function jumpToLine(lineIndex) {
   updateActiveChapter();
   highlightCurrentLineInList();
   addStateLine(`Jump to line ${lineIndex} (word ${currentWordIndex})`);
+}
+
+// PageDown / PageUp (clickers, foot pedals): one line forward / back
+function stepLine(delta) {
+  const totalLines = chapters.reduce((sum, ch) => sum + ch.lines.length, 0);
+  if (totalLines === 0) return;
+  const target = Math.max(0, Math.min(totalLines - 1, currentLineIndex + delta));
+  if (target === currentLineIndex) return;
+  jumpToLine(target);
+  recordLineTransition(target);
 }
 
 function highlightCurrentLineInList() {
@@ -1704,13 +2066,13 @@ function updateSetting(key, value) {
   }
   // Refresh estimated time when target WPM changes
   if (key === 'targetWpm') updateScriptInfo();
-  saveSettings();
+  saveSettings(key);
 }
 
 function toggleSetting(key, btnEl) {
   settings[key] = !settings[key];
   if (btnEl) btnEl.classList.toggle('on', settings[key]);
-  saveSettings();
+  saveSettings(key);
 }
 
 function toggleDiagnosticPanel() {
@@ -1720,7 +2082,7 @@ function toggleDiagnosticPanel() {
 
 function toggleTheme() {
   settings.theme = settings.theme === 'dark' ? 'light' : 'dark';
-  saveSettings();
+  saveSettings('theme');
   applyTheme();
   const btn = document.getElementById('theme-toggle-btn');
   if (btn) btn.innerHTML = settings.theme === 'light' ? '&#9790;' : '&#9728;';
@@ -1900,13 +2262,124 @@ function exportCaptions(format) {
   addStateLine(`Exported ${entries.length} captions as ${format.toUpperCase()}`);
 }
 
+// ---- Downloads ----
+function fileStamp() {
+  const d = new Date();
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}`;
+}
+
+function downloadBlob(filename, blob) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function downloadTranscriptLog() {
+  if (transcriptLog.length === 0) {
+    addStateLine('No take transcript yet — turn Debug on before starting a voice take');
+    return;
+  }
+  const data = { app: 'SyncPrompt ' + APP_VERSION, savedAt: new Date().toISOString(), scriptText,
+    scriptLangs: settings.scriptLangs, events: transcriptLog };
+  downloadBlob(`take-transcript-${fileStamp()}.json`, new Blob([JSON.stringify(data, null, 1)], { type: 'application/json' }));
+}
+
+function updateExportButton() {
+  const btn = document.getElementById('btn-export-captions');
+  if (btn) btn.disabled = isStarted || (captionTimeline.length === 0 && !takeAudio);
+}
+
+// YouTube chapter list ("0:00 Intro") from when each chapter was first reached in the take
+function exportYouTubeChapters() {
+  const pad = n => String(n).padStart(2, '0');
+  const fmt = ms => {
+    const t = Math.floor(ms / 1000), h = Math.floor(t / 3600), m = Math.floor(t / 60) % 60, sec = t % 60;
+    return h ? `${h}:${pad(m)}:${pad(sec)}` : `${m}:${pad(sec)}`;
+  };
+  const marks = [];
+  let start = 0;
+  chapters.forEach((ch, i) => {
+    const end = start + ch.lines.length;
+    const hit = captionTimeline.find(e => e.lineIndex >= start && e.lineIndex < end);
+    if (hit) {
+      const title = (i === 0 && !ch.isTitle && !ch.isDivider) ? 'Intro' : ch.title.replace(/\*\*/g, '').trim();
+      marks.push({ ms: hit.ms, title });
+    }
+    start = end;
+  });
+  const text = document.getElementById('status-text');
+  if (marks.length === 0) {
+    if (text) text.textContent = 'No chapters reached in this take';
+    return;
+  }
+  marks.sort((a, b) => a.ms - b.ms);
+  marks[0].ms = 0; // YouTube requires the first chapter at 0:00
+  const out = marks.map(m => `${fmt(m.ms)} ${m.title}`).join('\n') + '\n';
+  downloadBlob(`youtube-chapters-${fileStamp()}.txt`, new Blob([out], { type: 'text/plain' }));
+  const endMs = captionSessionEndMs || (Date.now() - sessionStats.startTime);
+  const tooShort = marks.some((m, i) => ((marks[i + 1] ? marks[i + 1].ms : endMs) - m.ms) < 10000);
+  if (text) {
+    text.textContent = marks.length < 3 || tooShort
+      ? 'Chapters saved — note: YouTube needs 3+ chapters, each at least 10s long'
+      : `Saved ${marks.length} YouTube chapters`;
+  }
+  addStateLine(`Exported ${marks.length} YouTube chapters`);
+}
+
+// ---- Take audio (optional, stays on this Mac) ----
+let takeRecorder = null;
+let takeAudio = null; // { blob, ext } of the last take
+
+async function startTakeRecording() {
+  if (typeof MediaRecorder === 'undefined') { addStateLine('Audio recording not supported in this browser'); return; }
+  let ok = false;
+  try { ok = await initMicrophone(); } catch {}
+  if (!isStarted) { stopMicrophone(); return; } // Take ended while the mic permission was pending
+  if (!ok || !micStream) return;
+  const chunks = []; // Per recording, so a late stop of the previous take can't mix in
+  const type = ['audio/webm;codecs=opus', 'audio/mp4', 'audio/webm'].find(t => MediaRecorder.isTypeSupported(t)) || '';
+  try {
+    const rec = new MediaRecorder(micStream, type ? { mimeType: type } : undefined);
+    rec.ondataavailable = (e) => { if (e.data && e.data.size) chunks.push(e.data); };
+    rec.onstop = () => {
+      const mime = rec.mimeType || type || 'audio/webm';
+      takeAudio = { blob: new Blob(chunks, { type: mime }), ext: mime.includes('mp4') ? 'm4a' : 'webm' };
+      addStateLine(`Take audio ready (${Math.round(takeAudio.blob.size / 1024)} KB)`);
+      updateExportButton();
+    };
+    rec.start(1000);
+    takeRecorder = rec;
+    addStateLine(`Recording take audio (${rec.mimeType || 'default format'})`);
+  } catch (err) {
+    addStateLine('Audio recording failed: ' + err.message);
+  }
+}
+
+function stopTakeRecording() {
+  if (takeRecorder && takeRecorder.state !== 'inactive') takeRecorder.stop();
+  takeRecorder = null;
+}
+
+function exportTakeAudio() {
+  if (takeAudio) downloadBlob(`take-${fileStamp()}.${takeAudio.ext}`, takeAudio.blob);
+}
+
 function showExportMenu(btn) {
   // Remove existing menu if any
   const existing = document.querySelector('.export-menu');
   if (existing) { existing.remove(); return; }
   const menu = document.createElement('div');
   menu.className = 'export-menu';
-  menu.innerHTML = `<button onclick="event.stopPropagation(); exportCaptions('srt'); this.parentElement.remove()">SRT (Recommended)</button><button onclick="event.stopPropagation(); exportCaptions('vtt'); this.parentElement.remove()">VTT (Web)</button><button onclick="event.stopPropagation(); exportCaptions('txt'); this.parentElement.remove()">TXT (Plain text)</button>`;
+  const item = (call, label) => `<button onclick="event.stopPropagation(); ${call}; this.parentElement.remove()">${label}</button>`;
+  menu.innerHTML = (captionTimeline.length
+      ? item("exportCaptions('srt')", 'SRT (Recommended)') + item("exportCaptions('vtt')", 'VTT (Web)')
+        + item("exportCaptions('txt')", 'TXT (Plain text)') + item('exportYouTubeChapters()', 'YouTube chapters (.txt)')
+      : '')
+    + (takeAudio ? item('exportTakeAudio()', `Take audio (.${takeAudio.ext})`) : '');
   btn.style.position = 'relative';
   btn.appendChild(menu);
   // Close on outside click
@@ -1924,19 +2397,28 @@ function openTeleprompterWindow() {
   }
   const url = location.href.split('?')[0] + '?teleprompter=1';
   teleprompterWindow = window.open(url, 'teleprompter', 'width=1024,height=600');
-  setTimeout(() => {
-    updateButtonStates();
-    broadcastTpState();
-    // If a chapter/line was selected before opening, jump there
-    if (currentLineIndex > 0) {
-      broadcastMessage({ type: 'scrollToLine', lineIndex: currentLineIndex, smooth: false });
-    }
-  }, 500);
+  // The prompter sends 'tpReady' once loaded (also after a reload) → sendFullStateToPrompter()
+}
+
+// Everything the prompter needs to show the current state — on first open, reopen or reload
+function sendFullStateToPrompter() {
+  updateButtonStates();
+  broadcastMessage({ type: 'script', scriptText, settings }); // resets the prompter to the top...
+  broadcastTpState();
+  // ...so the position goes after it
+  if (isVoiceActive && (isStarted || currentWordIndex > 0)) {
+    broadcastMessage({ type: 'highlightWord', wordIndex: currentWordIndex, lineIndex: currentLineIndex });
+  } else if (currentLineIndex > 0) {
+    broadcastMessage({ type: 'scrollToLine', lineIndex: currentLineIndex, smooth: false });
+  }
+  if (isScrolling) broadcastMessage({ type: 'startManualScroll', speed: manualScrollSpeed });
+  if (isPaused) broadcastMessage({ type: 'countdown', text: 'PAUSED' });
 }
 
 // ---- Start / Pause / Resume / End (session lifecycle) ----
 function toggleStart() {
   if (!isTeleprompterOpen()) return;
+  if (isCountingDown) return; // Ignore a second press (or key repeat) during the 3-2-1 — Escape cancels
 
   if (!isStarted) {
     // Start new session
@@ -1977,7 +2459,10 @@ function endSession() {
 
   pauseTimer();
   stopSpeechRecognition();
+  stopTakeRecording(); // before the mic stops, so the file isn't cut short
   stopMicrophone();
+  setEditorLocked(false);
+  saveTakeState();
 
   broadcastMessage({ type: 'stopScroll' });
 
@@ -1989,8 +2474,7 @@ function endSession() {
   broadcastTpState();
 
   // Enable caption export if we have recorded data
-  const exportBtn = document.getElementById('btn-export-captions');
-  if (exportBtn) exportBtn.disabled = captionTimeline.length === 0;
+  updateExportButton();
 }
 
 function pauseSession() {
@@ -2019,6 +2503,7 @@ function pauseSession() {
 
 function resumeSession() {
   isPaused = false;
+  lastRealMatchTime = Date.now(); // Restart the stuck clock, but a guessed position stays a guess
   addStateLine('Resume session');
   const btn = document.getElementById('start-btn');
   btn.textContent = 'Pause';
@@ -2059,8 +2544,16 @@ function startSession() {
   isPaused = false;
   captionTimeline = [];
   captionSessionEndMs = 0;
+  try { localStorage.removeItem(LAST_TAKE_KEY); } catch {}
   addStateLine(`Start session (voice=${isVoiceActive}, scroll=${isScrolling})`);
   resetSessionStats();
+  markRealPosition();
+  takeAudio = null;
+  if (settings.recordAudio) startTakeRecording();
+  lastPermissionErrorAt = 0;
+  lastResultAt = 0;
+  transcriptLog = [];
+  setEditorLocked(true);
   const btn = document.getElementById('start-btn');
   btn.textContent = 'Pause';
   btn.classList.add('active');
@@ -2079,6 +2572,7 @@ function startSession() {
 
   // If voice mode is on, start recognition with appropriate language
   if (isVoiceActive) {
+    initMicrophone(); // Level meter + voice activity (already open when the countdown asked for it)
     const startLang = scriptLineLangs[currentLineIndex] || 'ko';
     initSpeechRecognition(getRecogLangCode(startLang));
   } else {
@@ -2108,16 +2602,6 @@ function stopSession() {
   endSession();
 }
 
-function stopEverything() {
-  stopSession();
-  isVoiceActive = false;
-  const vmBtn = document.getElementById('voice-mode-btn');
-  if (vmBtn) {
-    vmBtn.textContent = 'Voice: OFF';
-    vmBtn.classList.remove('on');
-  }
-}
-
 // ---- Voice mode toggle (mode switch, not start/stop) ----
 function toggleVoiceMode() {
   isVoiceActive = !isVoiceActive;
@@ -2134,6 +2618,13 @@ function toggleVoiceMode() {
       broadcastMessage({ type: 'stopScroll' });
       const scrollBtn = document.getElementById('scroll-btn');
       if (scrollBtn) { scrollBtn.textContent = 'Auto Scroll'; scrollBtn.classList.remove('active'); }
+      // Re-anchor on the line manual scrolling reached (the word position is from before)
+      currentWordIndex = findWordIndexForLine(currentLineIndex);
+      currentAlignPos = findSyllablePosForLine(currentLineIndex);
+      lastConsumedSylCount = 0;
+      lastMatchTime = Date.now();
+      markRealPosition();
+      broadcastMessage({ type: 'highlightWord', wordIndex: currentWordIndex, lineIndex: currentLineIndex });
       const startLang = scriptLineLangs[currentLineIndex] || 'ko';
       initSpeechRecognition(getRecogLangCode(startLang));
       const dot = document.getElementById('status-dot');
@@ -2149,7 +2640,7 @@ function toggleVoiceMode() {
     // If session is running, switch to manual scroll
     if (isStarted) {
       stopSpeechRecognition();
-      stopMicrophone();
+      if (!takeRecorder) stopMicrophone(); // The take audio recording still needs the mic
       isScrolling = true;
       manualScrollSpeed = settings.scrollSpeed;
       broadcastMessage({ type: 'startManualScroll', speed: manualScrollSpeed });
@@ -2166,6 +2657,7 @@ function toggleVoiceMode() {
 function toggleManualScroll() {
   addStateLine(`Toggle scroll (isStarted=${isStarted}, isScrolling=${isScrolling})`);
   if (!isTeleprompterOpen()) return;
+  if (isCountingDown) return; // Checked before voice gets turned off below
 
   if (!isStarted) {
     // Start session in manual scroll mode
@@ -2201,13 +2693,23 @@ function toggleManualScroll() {
 
 // ---- Countdown ----
 async function startCountdown(callback) {
-  countdownCancelled = false;
+  if (isCountingDown) return;
+  isCountingDown = true;
+  const myGen = ++countdownGen;
 
-  // Get mic permission FIRST if voice mode is on (before showing countdown)
-  if (isVoiceActive) {
+  // Get mic permission FIRST if voice mode or audio recording is on (before showing countdown)
+  if (isVoiceActive || settings.recordAudio) {
     broadcastMessage({ type: 'countdown', text: 'Mic...' });
-    const micOk = await initMicrophone();
-    if (!micOk || countdownCancelled) {
+    let micOk = false;
+    try {
+      micOk = await initMicrophone();
+    } catch (err) {
+      // e.g. navigator.mediaDevices missing when not served from localhost/https
+      addDiagLine('ERROR: Microphone unavailable - ' + err.message, 'nomatch');
+    }
+    if (myGen !== countdownGen) return; // Cancelled while waiting — cancelCountdown already cleaned up
+    if (!micOk) {
+      isCountingDown = false;
       broadcastMessage({ type: 'countdown', text: null });
       return;
     }
@@ -2216,22 +2718,26 @@ async function startCountdown(callback) {
   let count = 3;
   broadcastMessage({ type: 'countdown', text: String(count) });
 
-  countdownTimer = setInterval(() => {
+  const timer = setInterval(() => {
     count--;
     if (count > 0) {
       broadcastMessage({ type: 'countdown', text: String(count) });
     } else if (count === 0) {
       broadcastMessage({ type: 'countdown', text: 'GO' });
     } else {
-      clearInterval(countdownTimer);
+      clearInterval(timer);
+      if (countdownTimer === timer) countdownTimer = null;
+      isCountingDown = false;
       broadcastMessage({ type: 'countdown', text: null });
       callback();
     }
   }, 1000);
+  countdownTimer = timer;
 }
 
 function cancelCountdown() {
-  countdownCancelled = true;
+  isCountingDown = false;
+  countdownGen++;
   if (countdownTimer) {
     clearInterval(countdownTimer);
     countdownTimer = null;
@@ -2243,7 +2749,63 @@ function cancelCountdown() {
 let audioCtx, analyser, micStream;
 let micInitPromise = null;
 
+// ---- Voice activity (from the mic level) ----
+// Tells speaking from silence: pauses never count as "stuck", and the watchdog can restart a
+// recognizer that stopped transcribing while you're still talking. Falls back to the gaps between
+// recognition results when the mic level isn't available (or the window is throttled in the background).
+const VAD_TICK_MS = 100;
+let vadTimer = null;
+let vadNoiseFloor = 0.01;
+let vadLastVoiceAt = 0;
+let vadLastTickAt = 0;           // 0 = not running
+let vadSpeaking = false;
+let vadSilenceStart = 0;
+let speechMsSinceTranscript = 0; // Talking time since the recognizer last produced new text
+let vadBuf = null;
+
+function getMicRms() {
+  if (!analyser) return null;
+  if (!vadBuf || vadBuf.length !== analyser.fftSize) vadBuf = new Float32Array(analyser.fftSize);
+  analyser.getFloatTimeDomainData(vadBuf);
+  let sum = 0;
+  for (let i = 0; i < vadBuf.length; i++) sum += vadBuf[i] * vadBuf[i];
+  return Math.sqrt(sum / vadBuf.length);
+}
+
+function vadActive() {
+  return vadLastTickAt > 0 && Date.now() - vadLastTickAt < 500;
+}
+
+function vadTick() {
+  const now = Date.now();
+  const rms = getMicRms();
+  if (rms === null) { vadLastTickAt = 0; return; }
+  const dt = vadLastTickAt ? Math.min(500, now - vadLastTickAt) : VAD_TICK_MS;
+  vadLastTickAt = now;
+  // Noise floor: drops fast to quiet levels, rises slowly (pauses between sentences pull it back down)
+  vadNoiseFloor = rms < vadNoiseFloor ? vadNoiseFloor * 0.8 + rms * 0.2 : vadNoiseFloor * 1.002;
+  if (rms > Math.max(vadNoiseFloor * 3, 0.008)) vadLastVoiceAt = now;
+  const speaking = now - vadLastVoiceAt < 400; // Short gaps between words still count as speaking
+  if (speaking !== vadSpeaking) {
+    vadSpeaking = speaking;
+    if (!speaking) vadSilenceStart = now;
+    else if (isStarted && !isPaused && vadSilenceStart && now - vadSilenceStart > 1500) {
+      addDiagLine(`Silence ${((now - vadSilenceStart) / 1000).toFixed(1)}s (not counted as stuck)`, '');
+    }
+  }
+  if (!isStarted || isPaused) return;
+  if (speaking) {
+    speechMsSinceTranscript += dt;
+  } else {
+    // Silence is not being stuck
+    lastMatchTime = Math.min(now, lastMatchTime + dt);
+    lastRealMatchTime = Math.min(now, lastRealMatchTime + dt);
+  }
+}
+
 function stopMicrophone() {
+  if (vadTimer) { clearInterval(vadTimer); vadTimer = null; }
+  vadLastTickAt = 0;
   if (micStream) {
     micStream.getTracks().forEach(track => track.stop());
     micStream = null;
@@ -2267,6 +2829,7 @@ function initMicrophone() {
     const source = audioCtx.createMediaStreamSource(stream);
     source.connect(analyser);
     updateMicLevel();
+    if (!vadTimer) vadTimer = setInterval(vadTick, VAD_TICK_MS);
     micInitPromise = null; // Clear so fresh request is made if mic is stopped & restarted
     return true;
   }).catch(err => {
@@ -2304,88 +2867,117 @@ function initSpeechRecognition(lang) {
     return;
   }
 
+  // Replacing a running recognizer (language switch, watchdog): its late events are ignored
+  // below because it is no longer the current `recognition`
   if (recognition) {
-    isLanguageSwitching = true;
     try { recognition.stop(); } catch {}
   }
 
-  recognition = new SpeechRecognition();
-  recognition.lang = lang;
-  recognition.continuous = true;
-  recognition.interimResults = true;
-  recognition.maxAlternatives = 1;
+  const rec = new SpeechRecognition();
+  recognition = rec;
+  rec.lang = lang;
+  rec.continuous = true;
+  rec.interimResults = true;
+  rec.maxAlternatives = 1;
 
-  recognition.onresult = (event) => {
+  rec.onresult = (event) => {
+    if (rec !== recognition) return; // Late result from a replaced or stopped recognizer
     // Accumulate ALL results (not just from resultIndex)
     // so we always have the full transcript for consumed-syllable tracking
     let fullText = '';
-    let hasFinal = false;
+    // "Final" = the latest segment is finished (not: any segment so far — that made every update look final)
+    const hasFinal = event.results.length > 0 && event.results[event.results.length - 1].isFinal;
     for (let i = 0; i < event.results.length; i++) {
       const t = event.results[i][0].transcript;
       fullText += t;
-      if (event.results[i].isFinal) hasFinal = true;
     }
 
+    // Silence is not being stuck. With the mic level, vadTick() handles this; without it,
+    // shift the match clocks forward by any pause between results.
+    const now = Date.now();
+    if (!vadActive() && lastResultAt && now - lastResultAt > 1500) {
+      const gap = now - lastResultAt;
+      lastMatchTime = Math.min(now, lastMatchTime + gap);
+      lastRealMatchTime = Math.min(now, lastRealMatchTime + gap);
+    }
+    lastResultAt = now;
+
     const transcript = fullText.trim();
+    if (transcript.length > 0 && settings.diagnosticMode) {
+      transcriptLog.push({ t: now - (sessionStats.startTime || now), lang: rec.lang, text: transcript, final: hasFinal });
+    }
     if (transcript.length > 0) {
       // Track for stale recognition watchdog (Chrome goes silent after FINAL)
       if (transcript !== lastTranscriptContent) {
         lastTranscriptContent = transcript;
         lastTranscriptTime = Date.now();
+        speechMsSinceTranscript = 0;
       }
       processTranscription(transcript, hasFinal);
     }
   };
 
-  let hadNetworkError = false;
+  let hadFatalError = false;
 
-  recognition.onerror = (event) => {
+  // Errors that restarting won't fix — stop voice and tell the user instead of retrying every 200ms
+  // ('no-speech' and 'aborted' are normal and handled by the auto-restart in onend)
+  const FATAL_SPEECH_ERRORS = {
+    'network': 'Speech API network error',
+    'not-allowed': 'Mic permission denied — check browser settings',
+    'service-not-allowed': 'Speech recognition blocked — on Mac, turn on Dictation (System Settings → Keyboard)',
+    'audio-capture': 'Microphone disconnected — check the mic, then start again',
+    'language-not-supported': `Speech language ${lang} not supported by this browser`,
+  };
+
+  rec.onerror = (event) => {
+    if (rec !== recognition) return;
     addDiagLine(`Speech error: ${event.error}`, 'nomatch');
     if (event.error === 'network') {
-      hadNetworkError = true;
-      const text = document.getElementById('status-text');
-      if (text) text.textContent = 'Speech API network error';
       addDiagLine('Web Speech API could not connect to Google servers.', 'nomatch');
       addDiagLine('Possible fixes:', 'nomatch');
       addDiagLine('  1. Check your internet connection', 'nomatch');
       addDiagLine('  2. Try opening chrome://settings/content/siteDetails?site=http://localhost:8080 and allow microphone', 'nomatch');
       addDiagLine('  3. Try using Safari instead (uses on-device Apple speech recognition)', 'nomatch');
-      // Don't retry on network errors — stop cleanly
-      isVoiceActive = false;
+    }
+    const fatalMsg = FATAL_SPEECH_ERRORS[event.error];
+    // Permission errors can be a one-off glitch mid-take: retry once, give up if it repeats within a minute
+    if (fatalMsg && (event.error === 'not-allowed' || event.error === 'service-not-allowed')
+        && Date.now() - lastPermissionErrorAt > 60000) {
+      lastPermissionErrorAt = Date.now();
+      addDiagLine(`Permission error (${event.error}) — retrying once`, 'warn');
+      return; // onend auto-restarts
+    }
+    if (fatalMsg) {
+      hadFatalError = true;
+      addDiagLine(fatalMsg, 'nomatch');
       stopSession();
+      isVoiceActive = false;
       const vmBtn = document.getElementById('voice-mode-btn');
       if (vmBtn) { vmBtn.textContent = 'Voice: OFF'; vmBtn.classList.remove('on'); }
-    }
-    if (event.error === 'not-allowed') {
+      broadcastTpState();
+      // Set after stopSession, which shows 'Session ended'
       const text = document.getElementById('status-text');
-      if (text) text.textContent = 'Mic permission denied';
-      addDiagLine('Microphone permission was denied. Check browser settings.', 'nomatch');
-    }
-    if (event.error === 'aborted') {
-      // Normal when stopping recognition, ignore
+      if (text) text.textContent = fatalMsg;
     }
   };
 
-  recognition.onend = () => {
-    // Skip restart if we're switching languages (new recognition already running)
-    if (isLanguageSwitching) {
-      isLanguageSwitching = false;
-      return;
-    }
-    // Only auto-restart for timeout — NOT after network errors
-    if (isVoiceActive && isStarted && !hadNetworkError) {
+  rec.onend = () => {
+    // Replaced (language switch, watchdog) or stopped — the current recognizer handles itself
+    if (rec !== recognition) return;
+    // Auto-restart after browser timeouts — NOT after fatal errors
+    if (isVoiceActive && isStarted && !isPaused && !hadFatalError) {
       sessionStats.recognitionRestarts++;
       addDiagLine(`Recognition restarted (${currentRecogLang})`, '');
       lastConsumedSylCount = 0; // Reset — new recognition session starts fresh
       setTimeout(() => {
-        try { recognition.start(); } catch {}
+        if (rec !== recognition || !isVoiceActive || !isStarted || isPaused) return;
+        try { rec.start(); } catch (err) { addDiagLine('Recognition restart failed: ' + err.message, 'nomatch'); }
       }, 200);
     }
   };
 
   try {
-    hadNetworkError = false;
-    recognition.start();
+    rec.start();
     startStaleWatchdog();
     addDiagLine(`Speech recognition started (${lang})`, 'match');
   } catch (err) {
@@ -2408,22 +3000,27 @@ function startStaleWatchdog() {
   stopStaleWatchdog();
   lastTranscriptTime = Date.now();
   lastTranscriptContent = '';
+  speechMsSinceTranscript = 0;
   staleWatchdogTimer = setInterval(() => {
-    if (!isVoiceActive || !isStarted || !recognition) return;
+    if (!isVoiceActive || !isStarted || isPaused || !recognition) return;
     const silentMs = Date.now() - lastTranscriptTime;
-    // If no new transcript content for 7 seconds, force-restart
-    if (silentMs > 7000) {
+    // Restart when no new text for 7s (refreshes Chrome's recognizer during long pauses), or sooner
+    // when the mic hears you talking for ~3s and nothing is transcribed (recognizer stalled)
+    const talkingNoText = vadActive() && speechMsSinceTranscript > 3000;
+    if (silentMs > 7000 || talkingNoText) {
+      const why = talkingNoText ? `talking ${(speechMsSinceTranscript / 1000).toFixed(1)}s with no text` : `${(silentMs / 1000).toFixed(0)}s silent`;
       sessionStats.watchdogRestarts++;
-      addDiagLine(`Stale recognition detected (${(silentMs / 1000).toFixed(0)}s silent) — restarting`, 'warn');
-      addStateLine(`Watchdog: restarting recognition (${(silentMs / 1000).toFixed(0)}s silent)`);
+      speechMsSinceTranscript = 0;
+      addDiagLine(`Stale recognition detected (${why}) — restarting`, 'warn');
+      addStateLine(`Watchdog: restarting recognition (${why})`);
       lastTranscriptContent = '';
       lastTranscriptTime = Date.now();
       lastConsumedSylCount = 0;
       lastMatchTime = Date.now(); // Reset so early language switch doesn't fire on stale data
-      try { recognition.stop(); } catch {}
-      // Don't set isLanguageSwitching — let onend handle restart naturally
+      // Fresh recognizer (same path as a language switch): also recovers one that died without firing onend
+      initSpeechRecognition(currentRecogLang);
     }
-  }, 3000);
+  }, 1000);
 }
 
 function stopStaleWatchdog() {
@@ -2474,18 +3071,27 @@ function processTranscription(transcript, isFinal) {
   }
 
   const timeSinceMatch = Date.now() - lastMatchTime;
-  const match = findBestMatch(transcript, scriptSyllables, currentAlignPos, timeSinceMatch);
+  // The "stuck" relaxations use time since the last REAL match (unstick/early switch don't reset it)
+  const match = findBestMatch(transcript, scriptSyllables, currentAlignPos, Date.now() - lastRealMatchTime);
   if (match) {
     sessionStats.matchCount++;
     sessionStats.uniqueWordsMatched.add(match.wordIndex);
     sessionStats.totalConfidence += match.confidence;
     sessionStats.highestWordReached = Math.max(sessionStats.highestWordReached, match.wordIndex + 1);
     const isNewWord = match.wordIndex !== currentWordIndex;
-    const isNewLine = match.lineIndex !== diagLastMatchLine;
+    const prevLineIndex = currentLineIndex;
+    const isNewLine = match.lineIndex !== prevLineIndex;
+    // A real match behind a guessed position: the guesses were wrong — drop their caption entries
+    const pulledBack = match.wordIndex < currentWordIndex;
+    if (pulledBack && provisionalFrom >= 0) {
+      captionTimeline.length = provisionalFrom;
+      addDiagLine(`Pulled back to word ${match.wordIndex} (guessed position was ${currentWordIndex})`, 'info');
+    }
     currentAlignPos = match.pos;
     currentWordIndex = match.wordIndex;
     currentLineIndex = match.lineIndex;
     lastMatchTime = Date.now();
+    markRealPosition();
     diagLastMatchLine = match.lineIndex;
 
     if (isNewWord) {
@@ -2493,10 +3099,12 @@ function processTranscription(transcript, isFinal) {
       addDiagLine(`>>> WORD ${match.wordIndex}: "${wordText}" line ${match.lineIndex} (conf: ${(match.confidence * 100).toFixed(0)}%, try${match.tryNum})`, 'match');
     }
 
-    // Send word highlight to teleprompter
-    broadcastMessage({ type: 'highlightWord', wordIndex: match.wordIndex, lineIndex: match.lineIndex });
+    // Send word highlight to teleprompter (only when it moved — results arrive several times a second)
+    if (isNewWord || match.lineIndex !== prevLineIndex) {
+      broadcastMessage({ type: 'highlightWord', wordIndex: match.wordIndex, lineIndex: match.lineIndex });
+    }
     updateRemainingTime(match.lineIndex);
-    if (isNewLine) { recordLineTransition(match.lineIndex); updateActiveChapter(); highlightCurrentLineInList(); }
+    if (isNewLine || pulledBack) { recordLineTransition(match.lineIndex); updateActiveChapter(); highlightCurrentLineInList(); }
 
     // End of script — matched last word
     if (match.wordIndex >= scriptWords.length - 1) {
@@ -2510,7 +3118,7 @@ function processTranscription(transcript, isFinal) {
   } else {
     const currentLine = currentAlignPos < scriptSyllables.length
       ? scriptSyllables[currentAlignPos]?.lineIndex ?? currentLineIndex : currentLineIndex;
-    const allHeardSyls = extractSyllables(transcript);
+    const allHeardSyls = heardUnits(transcript);
     const newSylCount = allHeardSyls.length - lastConsumedSylCount;
     const stuckSec = (timeSinceMatch / 1000).toFixed(0);
 
@@ -2519,8 +3127,10 @@ function processTranscription(transcript, isFinal) {
     const heardFirst = newKo.slice(0, 10).join('');
     const heardLast = newKo.slice(-10).join('');
     const scriptSnippet = scriptSyllables.slice(currentAlignPos, currentAlignPos + 15).map(s => s.char).join('');
-    addDiagLine(`No match (word ${currentWordIndex}, line ${currentLine}, ${stuckSec}s stuck, ${newSylCount} new syls)`, 'nomatch');
-    addDiagLine(`  heard: "${heardFirst}…${heardLast}" | script: "${scriptSnippet}"`, 'nomatch');
+    if (newSylCount >= 2) {
+      addDiagLine(`No match (word ${currentWordIndex}, line ${currentLine}, ${stuckSec}s stuck, ${newSylCount} new syls)`, 'nomatch');
+      addDiagLine(`  heard: "${heardFirst}…${heardLast}" | script: "${scriptSnippet}"`, 'nomatch');
+    }
 
     // Early language switch: if stuck 1.5s+ and a language change is coming within next few words, switch now
     // This prevents the recognizer from producing garbage when you've moved past a language boundary
@@ -2536,7 +3146,7 @@ function processTranscription(transcript, isFinal) {
             currentWordIndex = w;
             currentAlignPos = scriptWords[w].sylStart;
             currentLineIndex = scriptWords[w].lineIndex;
-            recordLineTransition(scriptWords[w].lineIndex);
+            recordProvisionalLine(scriptWords[w].lineIndex);
             sessionStats.langSwitches++;
             sessionStats.stuckEvents++;
             addDiagLine(`Early lang switch (stuck ${stuckSec}s): ${currentRecogLang} → ${neededLang} at word ${w}`, 'info');
@@ -2551,17 +3161,16 @@ function processTranscription(transcript, isFinal) {
       }
     }
 
-    // Unstick: advance progressively more the longer we're stuck
-    // 3s → 3 words, 6s → 5 words, 12s → 8 words, 25s+ → 15 words
+    // Unstick: after 3s of speech without a match, creep forward 3 words (silence doesn't count).
+    // Bigger recoveries come from the wider search window once stuck > 8s.
     if (timeSinceMatch > 3000 && newSylCount > 10) {
-      const stuckSeconds = timeSinceMatch / 1000;
-      const advanceBy = stuckSeconds > 25 ? 15 : stuckSeconds > 12 ? 8 : stuckSeconds > 6 ? 5 : 3;
+      const advanceBy = 3;
       const nextWord = Math.min(currentWordIndex + advanceBy, scriptWords.length - 1);
       if (nextWord > currentWordIndex) {
         currentWordIndex = nextWord;
         currentAlignPos = scriptWords[nextWord].sylStart;
         currentLineIndex = scriptWords[nextWord].lineIndex;
-        recordLineTransition(scriptWords[nextWord].lineIndex);
+        recordProvisionalLine(scriptWords[nextWord].lineIndex);
         lastMatchTime = Date.now(); // Reset so we don't cascade unstick every frame
         sessionStats.unstickCount++;
         sessionStats.stuckEvents++;
@@ -2690,7 +3299,7 @@ function copyDiagLog() {
     ? scriptSyllables[currentAlignPos]?.lineIndex ?? currentLineIndex : currentLineIndex;
   const totalLines = chapters.reduce((sum, ch) => sum + ch.lines.length, 0);
 
-  let header = `=== SyncPrompt Debug Log (v0.6.3) ===\n`;
+  let header = `=== SyncPrompt Debug Log (${APP_VERSION}) ===\n`;
   header += `Time: ${new Date().toLocaleString()}\n`;
   header += `Browser: ${navigator.userAgent.includes('Safari') && !navigator.userAgent.includes('Chrome') ? 'Safari' : 'Chrome'}\n`;
   header += `Script lines: ${totalLines} | Script syllables: ${scriptSyllables.length} | Script words: ${scriptWords.length}\n`;
@@ -2782,6 +3391,7 @@ function resetToTop() {
   currentWordIndex = 0;
   currentAlignPos = 0;
   lastConsumedSylCount = 0;
+  markRealPosition();
   broadcastMessage({ type: 'highlightWord', wordIndex: 0, lineIndex: 0 });
   elapsedSeconds = 0;
   updateTimerDisplay();
@@ -2794,7 +3404,13 @@ function resetToTop() {
 
 // ---- Keyboard ----
 function handleKeyboard(e) {
-  if (e.target.tagName === 'TEXTAREA' || e.target.tagName === 'INPUT') return;
+  // A read-only (locked) editor doesn't swallow shortcuts; clicker/pedal keys work even with a slider focused
+  const pedalKey = e.key === 'PageDown' || e.key === 'PageUp';
+  if ((e.target.tagName === 'TEXTAREA' && !e.target.readOnly)
+      || (e.target.tagName === 'INPUT' && !(pedalKey && e.target.type === 'range'))) return;
+  if (e.metaKey || e.ctrlKey || e.altKey) return; // Leave Cmd+R, Cmd+F etc. to the browser
+  // Holding a key must not count as pressing it again (E/R confirmation, Space pause/resume)
+  if (e.repeat && !REPEATABLE_KEYS.includes(e.key)) return;
 
   switch (e.key) {
     case ' ':
@@ -2842,17 +3458,27 @@ function handleKeyboard(e) {
     case 'r':
     case 'R':
       e.preventDefault();
-      resetToTop();
+      confirmThenRun('r', resetToTop);
       break;
     case 'b':
     case 'B':
       e.preventDefault();
+      // Clicker "blank screen" buttons often send B — don't jump mid-take
+      if (isStarted && !isPaused) break;
       jumpToNextBookmark();
       break;
     case 'e':
     case 'E':
       e.preventDefault();
-      endSession();
+      confirmThenRun('e', endSession);
+      break;
+    case 'PageDown':
+      e.preventDefault();
+      stepLine(1);
+      break;
+    case 'PageUp':
+      e.preventDefault();
+      stepLine(-1);
       break;
     case 'v':
     case 'V':
@@ -2922,6 +3548,7 @@ function initTeleprompterWindow() {
         <div class="teleprompter-content" id="tp-content"></div>
       </div>
       <div class="countdown-overlay" id="tp-countdown"></div>
+      <div class="tp-notice" id="tp-notice"></div>
     </div>
   `;
 
@@ -2935,10 +3562,7 @@ function initTeleprompterWindow() {
     switch (msg.type) {
       case 'settings':
         settings = msg.settings;
-        renderTeleprompter();
-        positionFocusLine();
-        applyVMask();
-        scrollToLine(currentLineIndex, false);
+        scheduleRerender(false);
         break;
       case 'script':
         scriptText = msg.scriptText;
@@ -2960,11 +3584,7 @@ function initTeleprompterWindow() {
         }
         break;
       case 'render':
-        loadBookmarks();
-        renderTeleprompter();
-        positionFocusLine();
-        applyVMask();
-        scrollToLine(currentLineIndex, false);
+        scheduleRerender(true);
         break;
       case 'scrollToLine':
         scrollToLine(msg.lineIndex, msg.smooth !== false);
@@ -2972,6 +3592,11 @@ function initTeleprompterWindow() {
       case 'startManualScroll':
         manualScrollSpeed = msg.speed;
         isScrolling = true;
+        // Leaving voice mode: clear word dimming left from the voice position
+        if (currentWordIndex > 0) {
+          wordEls.forEach(el => el && el.classList.remove('spoken'));
+          currentWordIndex = 0;
+        }
         break;
       case 'updateSpeed':
         manualScrollSpeed = msg.speed;
@@ -2994,7 +3619,13 @@ function initTeleprompterWindow() {
         break;
       case 'tpState':
         updateTpStatusBar(msg);
+        setWakeLock(!!msg.started);
         break;
+      case 'notice': {
+        const n = document.getElementById('tp-notice');
+        if (n) { n.textContent = msg.text || ''; n.classList.toggle('visible', !!msg.text); }
+        break;
+      }
     }
   };
 
@@ -3010,9 +3641,19 @@ function initTeleprompterWindow() {
     }
   });
 
+  // The browser drops the wake lock when the window is hidden — take it again when visible
+  document.addEventListener('visibilitychange', acquireWakeLock);
+
   // Keyboard in teleprompter window
   document.addEventListener('keydown', (e) => {
+    if (e.metaKey || e.ctrlKey || e.altKey) return; // Leave Cmd+R, Cmd+F etc. to the browser
+    if (e.repeat && !REPEATABLE_KEYS.includes(e.key)) return; // Held keys don't repeat actions
     switch (e.key) {
+      case 'PageDown':
+      case 'PageUp':
+        e.preventDefault();
+        bc.postMessage({ type: 'stepLineFromTP', delta: e.key === 'PageDown' ? 1 : -1 });
+        break;
       case ' ':
         e.preventDefault();
         bc.postMessage({ type: 'toggleStartFromTP' });
@@ -3065,11 +3706,81 @@ function initTeleprompterWindow() {
     }
   });
 
+  // Resize (incl. entering/leaving fullscreen): re-render once things settle, keeping the reading position
+  let resizeTimer = null;
   window.addEventListener('resize', () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => scheduleRerender(false), 100);
+  });
+
+  // Ask the control window for the full current state (first open, reopen, or reload mid-take)
+  bc.postMessage({ type: 'tpReady' });
+}
+
+// ---- Re-render without losing the reading position ----
+let wordEls = [];       // by word index — cached after each render
+let lineEls = [];       // by line index
+let lastFocusOffset = 0;
+let rerenderPending = false;
+let rerenderBookmarks = false;
+
+// One re-render per frame, however many settings messages arrive (slider drags)
+function scheduleRerender(reloadBookmarks) {
+  if (reloadBookmarks) rerenderBookmarks = true;
+  if (rerenderPending) return;
+  rerenderPending = true;
+  requestAnimationFrame(() => {
+    rerenderPending = false;
+    if (rerenderBookmarks) { loadBookmarks(); rerenderBookmarks = false; }
+    const anchor = captureAnchor();
+    renderTeleprompter();
     positionFocusLine();
     applyVMask();
-    renderTeleprompter();
+    restoreAnchor(anchor);
   });
+}
+
+// What is at the reading line now: the current word (voice mode), else the current line + how far into it
+function captureAnchor() {
+  const content = document.getElementById('tp-content');
+  if (!content || lineEls.length === 0) return null;
+  const wordEl = wordEls[currentWordIndex];
+  if (!isScrolling && currentWordIndex > 0 && wordEl
+      && +wordEl.closest('.teleprompter-line').dataset.lineIndex === currentLineIndex) {
+    return { word: currentWordIndex };
+  }
+  // Otherwise: whichever line is at the reading line right now, and how far into it
+  const focusY = targetScrollY + lastFocusOffset;
+  let idx = 0;
+  for (let i = 0; i < lineEls.length; i++) {
+    if (lineEls[i] && offsetTopIn(lineEls[i], content) <= focusY) idx = i;
+    else break;
+  }
+  const line = lineEls[idx];
+  const frac = (focusY - offsetTopIn(line, content)) / (line.offsetHeight || 1);
+  return { line: idx, frac: Math.max(0, Math.min(1, frac)) };
+}
+
+function restoreAnchor(a) {
+  const content = document.getElementById('tp-content');
+  if (!content || !a) return;
+  const focusOffset = (window.innerHeight * settings.focusLinePercent) / 100;
+  let y = null;
+  if (a.word != null && wordEls[a.word]) {
+    y = offsetTopIn(wordEls[a.word], content) - focusOffset;
+  } else if (a.line != null && lineEls[a.line]) {
+    const el = lineEls[a.line];
+    y = offsetTopIn(el, content) + a.frac * el.offsetHeight - focusOffset;
+  }
+  if (y === null) return;
+  scrollY = targetScrollY = Math.max(0, y);
+  content.style.transform = `translateY(${-scrollY}px)`;
+}
+
+function setLineState(el, i, current) {
+  if (!el) return;
+  el.classList.remove('past', 'current', 'future');
+  el.classList.add(i < current ? 'past' : i === current ? 'current' : 'future');
 }
 
 function renderTeleprompter() {
@@ -3127,13 +3838,21 @@ function renderTeleprompter() {
   // Apply styles
   content.style.cssText = `
     font-size: ${settings.fontSize}px;
-    font-family: ${settings.fontFamily}, sans-serif;
+    font-family: "${settings.fontFamily}", "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", sans-serif;
     font-weight: ${settings.fontBold ? 'bold' : 'normal'};
     line-height: ${settings.lineHeight};
     padding: 0 ${settings.marginH}px;
     --dim-opacity: ${settings.dimOpacity};
     color: #fff;
   `;
+  // cssText reset the transform — put it back so nothing flashes
+  content.style.transform = `translateY(${-scrollY}px)`;
+
+  lastFocusOffset = focusOffset;
+  wordEls = [];
+  lineEls = [];
+  content.querySelectorAll('.tp-word').forEach(el => { wordEls[+el.dataset.wordIndex] = el; });
+  content.querySelectorAll('.teleprompter-line').forEach(el => { lineEls[+el.dataset.lineIndex] = el; });
 }
 
 function applyVMask() {
@@ -3147,6 +3866,15 @@ function positionFocusLine() {
   const fl = document.getElementById('focus-line');
   if (fl) {
     fl.style.top = (window.innerHeight * settings.focusLinePercent / 100) + 'px';
+    // Arrows point at the middle of the current text line, centred in the side margins.
+    // They must fit in the margin — with no room, only the line is shown.
+    const markerSize = Math.round(Math.min(settings.fontSize * 0.6, settings.marginH - 4));
+    let marker = settings.readingMarker || 'both';
+    if (markerSize < 10 && marker !== 'off') marker = 'line';
+    fl.className = 'focus-line marker-' + marker;
+    fl.style.setProperty('--marker-size', markerSize + 'px');
+    fl.style.setProperty('--marker-mid', Math.round(settings.fontSize * settings.lineHeight / 2) + 'px');
+    fl.style.setProperty('--marker-inset', Math.max(2, Math.round((settings.marginH - markerSize) / 2)) + 'px');
   }
 }
 
@@ -3155,11 +3883,10 @@ function scrollToLine(lineIndex, smooth) {
   const content = document.getElementById('tp-content');
   if (!content) return;
 
-  const lineEls = content.querySelectorAll('.teleprompter-line');
   if (lineIndex >= 0 && lineIndex < lineEls.length) {
     const el = lineEls[lineIndex];
     const focusOffset = (window.innerHeight * settings.focusLinePercent) / 100;
-    const newY = Math.max(0, el.offsetTop - focusOffset);
+    const newY = Math.max(0, offsetTopIn(el, content) - focusOffset);
     targetScrollY = newY;
     if (!smooth) {
       // Instant snap for jumps (chapter click, line click, reset)
@@ -3169,49 +3896,44 @@ function scrollToLine(lineIndex, smooth) {
   }
 
   // Update line states
-  lineEls.forEach((el, i) => {
-    el.classList.remove('past', 'current', 'future');
-    if (i < lineIndex) el.classList.add('past');
-    else if (i === lineIndex) el.classList.add('current');
-    else el.classList.add('future');
-  });
+  lineEls.forEach((el, i) => setLineState(el, i, lineIndex));
+}
+
+// offsetTop relative to `container`, even when an ancestor line is positioned
+// (bookmarked lines are position: relative, which makes them their words' offsetParent)
+function offsetTopIn(el, container) {
+  let y = 0;
+  while (el && el !== container) {
+    y += el.offsetTop;
+    el = el.offsetParent;
+  }
+  return y;
 }
 
 function highlightWord(wordIndex, lineIndex) {
-  currentLineIndex = lineIndex;
-  currentWordIndex = wordIndex;
   const content = document.getElementById('tp-content');
   if (!content) return;
+  const prevWord = currentWordIndex;
+  const prevLine = currentLineIndex;
+  currentLineIndex = lineIndex;
+  currentWordIndex = wordIndex;
 
-  // Mark words as spoken/unspoken
-  const wordEls = content.querySelectorAll('.tp-word');
-  for (let i = 0; i < wordEls.length; i++) {
-    const wIdx = parseInt(wordEls[i].dataset.wordIndex);
-    if (wIdx < wordIndex) {
-      wordEls[i].classList.add('spoken');
-    } else {
-      wordEls[i].classList.remove('spoken');
-    }
+  // Only the words and lines between the old and new position change state
+  for (let i = Math.min(prevWord, wordIndex); i <= Math.max(prevWord, wordIndex); i++) {
+    if (wordEls[i]) wordEls[i].classList.toggle('spoken', i < wordIndex);
   }
+  const lineLo = Math.max(0, Math.min(prevLine, lineIndex));
+  const lineHi = Math.min(lineEls.length - 1, Math.max(prevLine, lineIndex));
+  for (let i = lineLo; i <= lineHi; i++) setLineState(lineEls[i], i, lineIndex);
 
-  // Update line states based on which line the current word is on
-  const lineEls = content.querySelectorAll('.teleprompter-line');
-  lineEls.forEach((el, i) => {
-    el.classList.remove('past', 'current', 'future');
-    if (i < lineIndex) el.classList.add('past');
-    else if (i === lineIndex) el.classList.add('current');
-    else el.classList.add('future');
-  });
-
-  // Scroll to current word position (not line top — handles long wrapped lines)
-  const currentWordEl = content.querySelector(`.tp-word[data-word-index="${wordIndex}"]`);
-  const scrollTarget = currentWordEl || (lineIndex >= 0 && lineIndex < lineEls.length ? lineEls[lineIndex] : null);
+  // Glide to the current word (not the line top — handles long wrapped lines); the render loop eases there.
+  // Long jumps (reset, chapter, reload) snap instead of streaming the whole script past.
+  const scrollTarget = wordEls[wordIndex] || lineEls[lineIndex];
   if (scrollTarget) {
     const focusOffset = (window.innerHeight * settings.focusLinePercent) / 100;
-    const newY = Math.max(0, scrollTarget.offsetTop - focusOffset);
-    scrollY = newY;
-    targetScrollY = newY;
-    if (content) {
+    targetScrollY = Math.max(0, offsetTopIn(scrollTarget, content) - focusOffset);
+    if (Math.abs(targetScrollY - scrollY) > window.innerHeight * 0.8) {
+      scrollY = targetScrollY;
       content.style.transform = `translateY(${-scrollY}px)`;
     }
   }
@@ -3223,6 +3945,37 @@ function toggleFullscreen() {
   } else {
     document.exitFullscreen().catch(() => {});
   }
+}
+
+// ---- Screen wake lock (teleprompter window) ----
+// Nobody touches the Mac during a voice take, so without this the display (and the Elgato) can sleep
+let wakeLock = null;
+let wakeLockWanted = false;
+let wakeLockPending = false;
+
+function setWakeLock(on) {
+  wakeLockWanted = on;
+  if (on) {
+    acquireWakeLock();
+  } else if (wakeLock) {
+    wakeLock.release().catch(() => {});
+    wakeLock = null;
+  }
+}
+
+function acquireWakeLock() {
+  if (!wakeLockWanted || wakeLock || wakeLockPending) return;
+  if (!navigator.wakeLock || document.visibilityState !== 'visible') return;
+  wakeLockPending = true;
+  navigator.wakeLock.request('screen').then(lock => {
+    wakeLockPending = false;
+    if (!wakeLockWanted) { lock.release().catch(() => {}); return; }
+    wakeLock = lock;
+    lock.addEventListener('release', () => { if (wakeLock === lock) wakeLock = null; });
+  }).catch(err => {
+    wakeLockPending = false;
+    console.warn('Screen wake lock unavailable:', err.message);
+  });
 }
 
 function updateTpStatusBar(state) {
@@ -3255,63 +4008,56 @@ function showCountdown(text) {
   }
 }
 
-// ---- Render loop (60fps) ----
-let lineTrackCounter = 0;
+// ---- Render loop ----
+// Speeds are per second (dt-based), so scrolling looks the same at 60 Hz and 120 Hz
+let lastFrameAt = 0;
+let lastLineTrackAt = 0;
+let appliedScrollY = null;
 
 function startRenderLoop() {
-  function frame() {
-    // Manual scroll
-    if (isScrolling) {
-      targetScrollY += (manualScrollSpeed / 50);
-    }
+  const content = document.getElementById('tp-content');
+  function frame(now) {
+    const dt = lastFrameAt ? Math.min(0.1, (now - lastFrameAt) / 1000) : 1 / 60;
+    lastFrameAt = now;
 
-    // Clamp scroll position
-    const content = document.getElementById('tp-content');
-    if (content) {
-      const maxScroll = content.scrollHeight - window.innerHeight;
-      if (targetScrollY > maxScroll && maxScroll > 0) {
-        targetScrollY = maxScroll;
-        // End of script reached
-        if (isScrolling) {
-          isScrolling = false;
-          bc.postMessage({ type: 'endOfScript' });
-        }
+    // Manual scroll: same speed as before at 60 fps (speed/50 px per 60 Hz frame)
+    if (isScrolling) targetScrollY += (manualScrollSpeed / 50) * 60 * dt;
+    const maxScroll = content.scrollHeight - window.innerHeight;
+    if (targetScrollY > maxScroll && maxScroll > 0) {
+      targetScrollY = maxScroll; // also stops nudges past the end
+      if (isScrolling) {
+        isScrolling = false; // End of script reached
+        bc.postMessage({ type: 'endOfScript' });
       }
     }
     targetScrollY = Math.max(0, targetScrollY);
 
-    // Smooth interpolation
+    // Ease towards the target (12% per 60 Hz frame)
     const diff = targetScrollY - scrollY;
     if (Math.abs(diff) > 0.5) {
-      scrollY += diff * 0.12;
+      scrollY += diff * (1 - Math.pow(0.88, dt * 60));
     } else {
       scrollY = targetScrollY;
     }
 
-    // Apply scroll
-    if (content) {
+    if (scrollY !== appliedScrollY) {
       content.style.transform = `translateY(${-scrollY}px)`;
+      appliedScrollY = scrollY;
     }
 
-    // Track current line during manual scroll (every 10 frames for performance)
-    lineTrackCounter++;
-    if (isScrolling && content && lineTrackCounter % 10 === 0) {
+    // Track current line during manual scroll (~6 times per second)
+    if (isScrolling && now - lastLineTrackAt > 160) {
+      lastLineTrackAt = now;
       const focusY = scrollY + (window.innerHeight * (settings.focusLinePercent / 100));
-      const lines = content.querySelectorAll('.teleprompter-line');
       let closestIdx = 0;
-      for (let i = 0; i < lines.length; i++) {
-        if (lines[i].offsetTop <= focusY) closestIdx = i;
+      for (let i = 0; i < lineEls.length; i++) {
+        if (lineEls[i] && offsetTopIn(lineEls[i], content) <= focusY) closestIdx = i;
         else break;
       }
       if (closestIdx !== currentLineIndex) {
         currentLineIndex = closestIdx;
         bc.postMessage({ type: 'focusLineChanged', lineIndex: closestIdx });
-        lines.forEach((el, i) => {
-          el.classList.remove('past', 'current', 'future');
-          if (i < closestIdx) el.classList.add('past');
-          else if (i === closestIdx) el.classList.add('current');
-          else el.classList.add('future');
-        });
+        lineEls.forEach((el, i) => setLineState(el, i, closestIdx));
       }
     }
 
