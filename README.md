@@ -47,16 +47,15 @@ During a take the script editor is locked, and closing the teleprompter window o
 
 Flubbed a take? Say a command instead of reaching for the keyboard:
 
-| Language | Restart from the top | Restart this chapter | Restart this line |
+| Command | Korean | French | English |
 |---|---|---|---|
-| Korean | 처음부터 다시 해주세요 / 처음부터 다시 할게요 | 챕터 다시 시작해주세요 / 챕터 다시 할게요 | 이 문장 다시 할게요 / 문장 다시 해주세요 |
-| French | reprends depuis le début | reprends le chapitre | reprends la phrase |
-| English | restart from the top | restart this chapter | restart this line |
-| Spanish | vuelve al principio | repite el capítulo | repite la frase |
-| German | nochmal von vorne bitte | kapitel nochmal bitte | satz nochmal bitte |
-| Portuguese | volta ao início | repete o capítulo | repete a frase |
-| Italian | ricomincia da capo | ripeti il capitolo | ripeti la frase |
-| Dutch | opnieuw vanaf het begin | hoofdstuk opnieuw graag | zin opnieuw graag |
+| Restart from the top | 처음부터 다시 해주세요 / 처음부터 다시 할게요 | reprends depuis le début | restart from the top |
+| Restart this chapter | 챕터 다시 시작해주세요 / 챕터 다시 할게요 | reprends le chapitre | restart this chapter |
+| Restart this line | 이 문장 다시 할게요 / 문장 다시 해주세요 | reprends la phrase | restart this line |
+| Previous line | 이전 문장 할게요 | phrase précédente | previous line |
+| Next line | 다음 문장 할게요 | phrase suivante | next line |
+
+Spanish, German, Portuguese, Italian and Dutch have their own defaults (see the sidebar).
 
 Commands work in the language of the line you're on (not available for Japanese or Chinese). Change the phrases under **Voice commands** in the sidebar, and give a command several phrases by separating them with `/`. Start with a distinctive word: the first real word (not a tiny one like "이" or "on") must be heard clearly. If your script itself contains a command phrase, that phrase is switched off.
 

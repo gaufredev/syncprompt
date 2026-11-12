@@ -676,7 +676,7 @@ dialog.help-modal::backdrop { background: rgba(0,0,0,0.6); }
 .voice-cmd-lang { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
 .voice-cmd-lang summary { cursor: pointer; padding: 2px 0; user-select: none; }
 .voice-cmd-row { display: flex; align-items: center; gap: 8px; padding: 2px 0; }
-.voice-cmd-row label { font-size: 12px; color: var(--text-muted); white-space: nowrap; width: 78px; flex-shrink: 0; }
+.voice-cmd-row label { font-size: 12px; color: var(--text-muted); white-space: nowrap; width: 84px; flex-shrink: 0; }
 .voice-cmd-row input { flex: 1; min-width: 0; padding: 4px 8px; background: var(--control-bg); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text); font-size: 12px; }
 .voice-cmd-row input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-glow); }
 .voice-cmd-warn { font-size: 10px; color: var(--orange); text-align: right; margin-top: -2px; }
@@ -745,7 +745,7 @@ const DEFAULT_SETTINGS = {
   voiceCommands: {}, // Per-language phrases that replace the defaults, e.g. { fr: { top: '…' } }
 };
 
-const APP_VERSION = 'v0.7.7'; // Bump with every change — shown in the header and in debug logs
+const APP_VERSION = 'v0.7.8'; // Bump with every change — shown in the header and in debug logs
 
 // All supported languages for the selector
 const AVAILABLE_LANGS = [
@@ -1094,16 +1094,18 @@ const VOICE_COMMAND_TYPES = [
   { id: 'top', label: 'restart from the top', ui: 'From the top' },
   { id: 'chapter', label: 'restart this chapter', ui: 'This chapter' },
   { id: 'line', label: 'restart this line', ui: 'This line' },
+  { id: 'prev', label: 'go to the previous line', ui: 'Previous line' },
+  { id: 'next', label: 'go to the next line', ui: 'Next line' },
 ];
 const DEFAULT_VOICE_COMMANDS = {
-  ko: { top: '처음부터 다시 해주세요 / 처음부터 다시 할게요', chapter: '챕터 다시 시작해주세요 / 챕터 다시 할게요', line: '이 문장 다시 할게요 / 문장 다시 해주세요' },
-  fr: { top: 'reprends depuis le début', chapter: 'reprends le chapitre', line: 'reprends la phrase' },
-  en: { top: 'restart from the top', chapter: 'restart this chapter', line: 'restart this line' },
-  es: { top: 'vuelve al principio', chapter: 'repite el capítulo', line: 'repite la frase' },
-  de: { top: 'nochmal von vorne bitte', chapter: 'kapitel nochmal bitte', line: 'satz nochmal bitte' },
-  pt: { top: 'volta ao início', chapter: 'repete o capítulo', line: 'repete a frase' },
-  it: { top: 'ricomincia da capo', chapter: 'ripeti il capitolo', line: 'ripeti la frase' },
-  nl: { top: 'opnieuw vanaf het begin', chapter: 'hoofdstuk opnieuw graag', line: 'zin opnieuw graag' },
+  ko: { top: '처음부터 다시 해주세요 / 처음부터 다시 할게요', chapter: '챕터 다시 시작해주세요 / 챕터 다시 할게요', line: '이 문장 다시 할게요 / 문장 다시 해주세요', prev: '이전 문장 할게요', next: '다음 문장 할게요' },
+  fr: { top: 'reprends depuis le début', chapter: 'reprends le chapitre', line: 'reprends la phrase', prev: 'phrase précédente', next: 'phrase suivante' },
+  en: { top: 'restart from the top', chapter: 'restart this chapter', line: 'restart this line', prev: 'previous line', next: 'next line' },
+  es: { top: 'vuelve al principio', chapter: 'repite el capítulo', line: 'repite la frase', prev: 'frase anterior', next: 'frase siguiente' },
+  de: { top: 'nochmal von vorne bitte', chapter: 'kapitel nochmal bitte', line: 'satz nochmal bitte', prev: 'vorheriger satz', next: 'nächster satz' },
+  pt: { top: 'volta ao início', chapter: 'repete o capítulo', line: 'repete a frase', prev: 'frase anterior', next: 'próxima frase' },
+  it: { top: 'ricomincia da capo', chapter: 'ripeti il capitolo', line: 'ripeti la frase', prev: 'frase precedente', next: 'frase successiva' },
+  nl: { top: 'opnieuw vanaf het begin', chapter: 'hoofdstuk opnieuw graag', line: 'zin opnieuw graag', prev: 'vorige zin', next: 'volgende zin' },
 };
 const VOICE_CMD_MIN_SCORE = 0.8; // Korean: share of the phrase's syllables heard, in order
 const VOICE_CMD_MIN_SCORE_LATIN = 0.9; // Letters match by chance more easily than syllables
@@ -1210,9 +1212,14 @@ function checkVoiceCommand(transcript) {
 
   addDiagLine(`VOICE COMMAND: ${best.cmd.label} (${Math.round(best.score * 100)}%)`, 'info');
   const before = recognition;
-  const target = best.cmd.id === 'top' ? 0
-    : best.cmd.id === 'chapter' ? findChapterStartLine(getCurrentChapterIndex())
-    : currentLineIndex;
+  const lastLine = Math.max(0, chapters.reduce((sum, ch) => sum + ch.lines.length, 0) - 1);
+  const target = {
+    top: 0,
+    chapter: findChapterStartLine(getCurrentChapterIndex()),
+    line: currentLineIndex,
+    prev: Math.max(0, currentLineIndex - 1),
+    next: Math.min(lastLine, currentLineIndex + 1),
+  }[best.cmd.id];
   jumpToLine(target);
   updateActiveChapter();
   recordLineTransition(target); // Captions: the line starts again from here
