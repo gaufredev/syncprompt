@@ -673,6 +673,10 @@ dialog.help-modal::backdrop { background: rgba(0,0,0,0.6); }
 
 /* Language selector chips */
 .lang-selector { display: flex; flex-wrap: wrap; gap: 4px; }
+#voice-cmd-settings .control-row input[type="text"] { max-width: none; }
+.voice-cmd-lang { font-size: 11px; color: var(--text-dim); margin-top: 4px; }
+.voice-cmd-warn { font-size: 10px; color: var(--orange); text-align: right; margin-top: -2px; }
+.voice-cmd-hint { font-size: 11px; color: var(--text-dim); margin-top: 4px; line-height: 1.4; }
 .lang-chip { display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px; background: var(--control-bg); border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 11px; cursor: pointer; user-select: none; color: var(--text-muted); transition: all 0.12s; }
 .lang-chip:hover { border-color: var(--text-dim); }
 .lang-chip input { margin: 0; cursor: pointer; accent-color: var(--accent); }
@@ -734,9 +738,10 @@ const DEFAULT_SETTINGS = {
   scriptLangs: [], // empty = auto-detect. e.g. ['ko','fr'] = only these languages
   readingMarker: 'both', // 'both' | 'arrows' | 'line' | 'off'
   recordAudio: false,
+  voiceCommands: {}, // Per-language phrases that replace the defaults, e.g. { fr: { top: '…' } }
 };
 
-const APP_VERSION = 'v0.7.3'; // Bump with every change — shown in the header and in debug logs
+const APP_VERSION = 'v0.7.6'; // Bump with every change — shown in the header and in debug logs
 
 // All supported languages for the selector
 const AVAILABLE_LANGS = [
@@ -834,6 +839,7 @@ function loadSettings() {
       const merged = { ...DEFAULT_SETTINGS, ...s, version: DEFAULT_SETTINGS.version };
       // Ensure scriptLangs is always an array
       if (!Array.isArray(merged.scriptLangs)) merged.scriptLangs = [];
+      if (!merged.voiceCommands || typeof merged.voiceCommands !== 'object') merged.voiceCommands = {};
       return merged;
     }
   } catch {}
@@ -841,7 +847,7 @@ function loadSettings() {
 }
 
 // Settings the prompter never reads — changing them must not re-render it
-const CONTROL_ONLY_SETTINGS = ['theme', 'showPace', 'targetWpm', 'diagnosticMode', 'countdownEnabled', 'voiceEngine', 'scrollSpeed', 'recordAudio'];
+const CONTROL_ONLY_SETTINGS = ['theme', 'showPace', 'targetWpm', 'diagnosticMode', 'countdownEnabled', 'voiceEngine', 'scrollSpeed', 'recordAudio', 'voiceCommands'];
 
 function saveSettings(changedKey) {
   try { localStorage.setItem('tp_settings', JSON.stringify(settings)); } catch {}
@@ -1067,6 +1073,141 @@ function heardUnits(transcript) {
   return extractSyllables(numbersToWords(cleaned, currentRecogLang.slice(0, 2)));
 }
 
+// Manual jump (Go, PageUp/Down, bookmark, chapter, click on the prompter, voice command): everything heard before the jump
+// belongs to the old position. Mark it consumed — with 0, the old reading of the same lines was matched
+// again from the top and pushed the prompter ahead of the speaker.
+function consumeHeardSoFar() {
+  lastConsumedSylCount = lastTranscriptContent ? heardUnits(lastTranscriptContent).length : 0;
+}
+
+// ---- Voice commands ----
+// Said aloud during a take, in the language the recognizer is listening in. Matched loosely — the
+// recognizer often gets a syllable or letter wrong — but the FIRST word must be clearly there, so
+// ordinary speech that only shares the ending ("…해주세요", "…please") can't set them off.
+// Japanese/Chinese are left out: voice sync doesn't match their characters.
+const VOICE_COMMAND_TYPES = [
+  { id: 'top', label: 'restart from the top', ui: 'From the top' },
+  { id: 'chapter', label: 'restart this chapter', ui: 'This chapter' },
+];
+const DEFAULT_VOICE_COMMANDS = {
+  ko: { top: '처음부터 다시 해주세요', chapter: '챕터 다시 시작해주세요' },
+  fr: { top: 'reprends depuis le début', chapter: 'reprends le chapitre' },
+  en: { top: 'restart from the top', chapter: 'restart this chapter' },
+  es: { top: 'vuelve al principio', chapter: 'repite el capítulo' },
+  de: { top: 'nochmal von vorne bitte', chapter: 'kapitel nochmal bitte' },
+  pt: { top: 'volta ao início', chapter: 'repete o capítulo' },
+  it: { top: 'ricomincia da capo', chapter: 'ripeti il capitolo' },
+  nl: { top: 'opnieuw vanaf het begin', chapter: 'hoofdstuk opnieuw graag' },
+};
+const VOICE_CMD_MIN_SCORE = 0.8; // Korean: share of the phrase's syllables heard, in order
+const VOICE_CMD_MIN_SCORE_LATIN = 0.9; // Letters match by chance more easily than syllables
+const VOICE_CMD_MIN_UNITS = 6; // Shorter phrases fire too easily
+let disabledVoiceCommands = new Set(); // 'lang:id' — commands whose phrase is in the script itself
+
+function getVoiceCommandPhrase(lang, id) {
+  const custom = settings.voiceCommands?.[lang]?.[id];
+  return (custom && custom.trim()) || DEFAULT_VOICE_COMMANDS[lang]?.[id] || '';
+}
+
+// Matchable units of a phrase: the first word (must be heard) and the whole phrase
+function voiceCommandUnits(phrase, lang) {
+  const toUnits = t => extractSyllables(numbersToWords(t, lang));
+  const words = phrase.trim().split(/\s+/);
+  return { phrase: toUnits(phrase), key: toUnits(words[0] || '') };
+}
+
+function voiceCommandScore(cmdUnits, units) {
+  const { phrase, key } = cmdUnits;
+  if (phrase.length < VOICE_CMD_MIN_UNITS || key.length === 0) return 0;
+  const tail = units.slice(-voiceCommandTailLength(cmdUnits));
+  // First word, heard together (not letters scattered over the tail). Long word: one unit may be wrong.
+  const keyNeed = key.length - (key.length >= 4 ? 1 : 0);
+  let keyBest = 0;
+  for (let i = 0; i < tail.length && keyBest < keyNeed; i++) {
+    keyBest = Math.max(keyBest, lcsLength(key, tail.slice(i, i + key.length + 2)));
+  }
+  if (keyBest < keyNeed) return 0;
+  return lcsLength(phrase, tail) / phrase.length;
+}
+
+function isLatinPhrase(cmdUnits) {
+  const p = cmdUnits.phrase;
+  return p.filter(c => c >= 'a' && c <= 'z').length >= 0.7 * p.length;
+}
+
+// How much of the latest speech the phrase is looked for in (a little extra room for misheard bits)
+function voiceCommandTailLength(cmdUnits) {
+  return Math.ceil(cmdUnits.phrase.length * (isLatinPhrase(cmdUnits) ? 1.3 : 1.5));
+}
+
+function voiceCommandMinScore(cmdUnits) {
+  return isLatinPhrase(cmdUnits) ? VOICE_CMD_MIN_SCORE_LATIN : VOICE_CMD_MIN_SCORE;
+}
+
+// A script that contains a command phrase would trigger it while being read — switch that command off
+function checkVoiceCommandsAgainstScript() {
+  disabledVoiceCommands = new Set();
+  const chars = scriptSyllables.map(s => s.char);
+  // Only the script's own languages: the recognizer never listens in any other
+  const langs = [...new Set(scriptLineLangs)].filter(l => DEFAULT_VOICE_COMMANDS[l]);
+  langs.forEach(lang => {
+    VOICE_COMMAND_TYPES.forEach(type => {
+      const phrase = getVoiceCommandPhrase(lang, type.id);
+      const cu = voiceCommandUnits(phrase, lang);
+      const win = voiceCommandTailLength(cu);
+      const min = voiceCommandMinScore(cu);
+      for (let i = 0; i < chars.length; i++) {
+        if (chars[i] !== cu.key[0] && chars[i] !== cu.key[1]) continue; // Quick skip: a hit starts with the first word
+        if (voiceCommandScore(cu, chars.slice(i, i + win)) >= min) {
+          disabledVoiceCommands.add(`${lang}:${type.id}`);
+          break;
+        }
+      }
+    });
+  });
+  logDisabledVoiceCommands();
+}
+
+function logDisabledVoiceCommands() {
+  disabledVoiceCommands.forEach(key => {
+    const [lang, id] = key.split(':');
+    addDiagLine(`Voice command "${getVoiceCommandPhrase(lang, id)}" is off — the script contains it`, 'warn');
+  });
+}
+
+// Returns true when the transcript ends with a voice command (and carries it out)
+function checkVoiceCommand(transcript) {
+  const lang = AVAILABLE_LANGS.find(l => l.recog === currentRecogLang)?.code;
+  if (!lang || !DEFAULT_VOICE_COMMANDS[lang]) return false;
+  const units = heardUnits(transcript);
+  let best = null;
+  VOICE_COMMAND_TYPES.forEach(type => {
+    if (disabledVoiceCommands.has(`${lang}:${type.id}`)) return;
+    const cu = voiceCommandUnits(getVoiceCommandPhrase(lang, type.id), lang);
+    const score = voiceCommandScore(cu, units);
+    if (score >= voiceCommandMinScore(cu) && (!best || score > best.score)) best = { cmd: type, score };
+  });
+  if (!best) return false;
+
+  addDiagLine(`VOICE COMMAND: ${best.cmd.label} (${Math.round(best.score * 100)}%)`, 'info');
+  const before = recognition;
+  const target = best.cmd.id === 'top' ? 0 : findChapterStartLine(getCurrentChapterIndex());
+  jumpToLine(target);
+  updateActiveChapter();
+  recordLineTransition(target); // Captions: the line starts again from here
+  // Fresh recognizer (unless the jump already made one for a language change),
+  // so the command's own words are neither matched nor heard as a command again
+  if (recognition === before && isVoiceActive && isStarted) initSpeechRecognition(currentRecogLang);
+  lastConsumedSylCount = 0;
+  return true;
+}
+
+function findChapterStartLine(index) {
+  let lineIdx = 0;
+  for (let i = 0; i < index && i < chapters.length; i++) lineIdx += chapters[i].lines.length;
+  return lineIdx;
+}
+
 function buildSyllableIndex(chapters) {
   const syls = [];
   let lineIdx = 0;
@@ -1153,9 +1294,12 @@ function findBestMatch(transcript, scriptSyls, currentPos, stuckMs) {
   const allSyls = heardUnits(transcript);
 
   // Safety: if transcript shrank (Safari revision or new session), reset consumed
+  // Small shrink = Safari rewrote the same transcript: keep what was consumed (minus the overlap), or
+  // speech from before a jump comes back as new. Big shrink = a new transcript: start from 0.
   if (allSyls.length < lastConsumedSylCount) {
-    lastConsumedSylCount = 0;
-    addDiagLine(`Transcript shrank (${allSyls.length} < consumed) — reset`, '');
+    const revised = allSyls.length >= lastConsumedSylCount / 2;
+    addDiagLine(`Transcript shrank (${allSyls.length} < ${lastConsumedSylCount}) — ${revised ? 'revised' : 'reset'}`, '');
+    lastConsumedSylCount = revised ? Math.max(0, allSyls.length - MATCH_OVERLAP) : 0;
   }
 
   // Only use NEW syllables (after what we already consumed/matched)
@@ -1332,7 +1476,7 @@ function initControlWindow() {
       currentLineIndex = msg.lineIndex;
       currentWordIndex = findWordIndexForLine(msg.lineIndex);
       currentAlignPos = findSyllablePosForLine(msg.lineIndex);
-      lastConsumedSylCount = 0; // Reset consumed syllables on re-anchor
+      consumeHeardSoFar(); // Speech from before the click belongs to the old position
       lastMatchTime = Date.now(); // Reset stuck timer on re-anchor
       markRealPosition();
       // Use highlightWord in voice mode so word dimming updates correctly
@@ -1524,6 +1668,11 @@ function buildControlUI() {
             ${AVAILABLE_LANGS.map(l => `<label class="lang-chip"><input type="checkbox" value="${l.code}" ${settings.scriptLangs.includes(l.code) ? 'checked' : ''} onchange="toggleLang('${l.code}', this.checked)">${l.label}</label>`).join('')}
           </div>
           <div style="color:var(--text-dim);font-size:11px;margin-top:4px;">${settings.scriptLangs.length === 0 ? 'Auto-detect (ko/fr/en)' : settings.scriptLangs.map(l => AVAILABLE_LANGS.find(a => a.code === l)?.label).join(' + ')}</div>
+        </div>
+
+        <div class="control-group">
+          <h3>Voice commands</h3>
+          <div id="voice-cmd-settings"></div>
         </div>
 
         <div class="control-group">
@@ -1935,6 +2084,8 @@ function updateScriptInfo() {
 function parseAndBroadcastScript() {
   chapters = parseChapters(scriptText);
   scriptSyllables = buildSyllableIndex(chapters);
+  checkVoiceCommandsAgainstScript();
+  renderVoiceCommandSettings();
   if (!isStarted) {
     // The prompter goes back to the top on a new script — keep the matcher in step
     currentLineIndex = 0;
@@ -1994,7 +2145,7 @@ function jumpToLine(lineIndex) {
   currentLineIndex = lineIndex;
   currentWordIndex = findWordIndexForLine(lineIndex);
   currentAlignPos = findSyllablePosForLine(lineIndex);
-  lastConsumedSylCount = 0;
+  consumeHeardSoFar(); // Speech from before the jump belongs to the old position
   lastMatchTime = Date.now();
   markRealPosition();
 
@@ -2005,6 +2156,7 @@ function jumpToLine(lineIndex) {
     if (lang) {
       const neededLang = getRecogLangCode(lang);
       if (neededLang !== currentRecogLang && isStarted) {
+        lastConsumedSylCount = 0; // New recognizer, new transcript
         initSpeechRecognition(neededLang);
       }
     }
@@ -2119,6 +2271,50 @@ function toggleLang(code, checked) {
   }
   // Save language profile
   localStorage.setItem('tp_lang_profile', JSON.stringify(settings.scriptLangs));
+  renderVoiceCommandSettings();
+}
+
+// Voice command phrases for the script's languages (auto-detect: ko/fr/en). Empty field = default.
+function renderVoiceCommandSettings() {
+  const el = document.getElementById('voice-cmd-settings');
+  if (!el) return;
+  const langs = (settings.scriptLangs.length ? settings.scriptLangs : ['ko', 'fr', 'en'])
+    .filter(l => DEFAULT_VOICE_COMMANDS[l]);
+  const rows = langs.map(lang => {
+    const label = AVAILABLE_LANGS.find(a => a.code === lang)?.label || lang;
+    const inputs = VOICE_COMMAND_TYPES.map(type => {
+      const custom = settings.voiceCommands?.[lang]?.[type.id] || '';
+      const warn = voiceCommandWarning(lang, type.id);
+      return `<div class="control-row"><label>${type.ui}</label><input type="text" value="${escapeHtml(custom)}" placeholder="${escapeHtml(DEFAULT_VOICE_COMMANDS[lang][type.id])}" onchange="updateVoiceCommand('${lang}', '${type.id}', this.value)" title="Leave empty to use the default"></div>`
+        + (warn ? `<div class="voice-cmd-warn">${escapeHtml(warn)}</div>` : '');
+    }).join('');
+    return `<div class="voice-cmd-lang">${escapeHtml(label)}</div>${inputs}`;
+  }).join('');
+  const skipped = settings.scriptLangs.filter(l => !DEFAULT_VOICE_COMMANDS[l]);
+  el.innerHTML = rows
+    + `<div class="voice-cmd-hint">Say one during a take to jump back. Start with a distinctive word — it must be heard clearly. Empty = default.${skipped.length ? ' Not available for ' + skipped.map(l => AVAILABLE_LANGS.find(a => a.code === l)?.label).join(', ') + '.' : ''}</div>`;
+}
+
+function voiceCommandWarning(lang, id) {
+  const cu = voiceCommandUnits(getVoiceCommandPhrase(lang, id), lang);
+  if (cu.phrase.length < VOICE_CMD_MIN_UNITS) return 'Too short — use a few more words';
+  const otherId = VOICE_COMMAND_TYPES.find(t => t.id !== id).id;
+  if (getVoiceCommandPhrase(lang, otherId).trim().toLowerCase() === getVoiceCommandPhrase(lang, id).trim().toLowerCase()) return 'Same as the other command';
+  if (disabledVoiceCommands.has(`${lang}:${id}`)) return 'Off — your script contains this phrase';
+  return '';
+}
+
+function updateVoiceCommand(lang, id, value) {
+  if (!settings.voiceCommands || typeof settings.voiceCommands !== 'object') settings.voiceCommands = {};
+  const v = value.trim();
+  if (!v || v === DEFAULT_VOICE_COMMANDS[lang][id]) {
+    if (settings.voiceCommands[lang]) delete settings.voiceCommands[lang][id];
+  } else {
+    settings.voiceCommands[lang] = { ...settings.voiceCommands[lang], [id]: v };
+  }
+  saveSettings('voiceCommands');
+  checkVoiceCommandsAgainstScript();
+  renderVoiceCommandSettings();
 }
 
 function updatePace() {
@@ -2541,6 +2737,7 @@ function broadcastTpState() {
 
 function startSession() {
   isStarted = true;
+  logDisabledVoiceCommands();
   isPaused = false;
   captionTimeline = [];
   captionSessionEndMs = 0;
@@ -2969,6 +3166,7 @@ function initSpeechRecognition(lang) {
       sessionStats.recognitionRestarts++;
       addDiagLine(`Recognition restarted (${currentRecogLang})`, '');
       lastConsumedSylCount = 0; // Reset — new recognition session starts fresh
+      lastTranscriptContent = ''; // So a jump before its first result doesn't count the old session's text
       setTimeout(() => {
         if (rec !== recognition || !isVoiceActive || !isStarted || isPaused) return;
         try { rec.start(); } catch (err) { addDiagLine('Recognition restart failed: ' + err.message, 'nomatch'); }
@@ -3069,6 +3267,7 @@ function processTranscription(transcript, isFinal) {
     const shortTranscript = transcript.length > 60 ? '...' + transcript.slice(-60) : transcript;
     addDiagLine(`${isFinal ? 'FINAL' : 'interim'}: "${shortTranscript}"`, '');
   }
+  if (checkVoiceCommand(transcript)) return;
 
   const timeSinceMatch = Date.now() - lastMatchTime;
   // The "stuck" relaxations use time since the last REAL match (unstick/early switch don't reset it)
