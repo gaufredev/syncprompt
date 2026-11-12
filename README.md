@@ -45,7 +45,7 @@ During a take the script editor is locked, and closing the teleprompter window o
 
 ### Voice Commands
 
-Flubbed a take? Say a command instead of reaching for the keyboard:
+Flubbed a take, or want to skip ahead? Say a command instead of reaching for the keyboard:
 
 | Command | Korean | French | English |
 |---|---|---|---|
@@ -57,7 +57,7 @@ Flubbed a take? Say a command instead of reaching for the keyboard:
 | Previous line | 이전 문장 할게요 | phrase précédente | previous line |
 | Next line | 다음 문장 할게요 | phrase suivante | next line |
 
-Spanish, German, Portuguese, Italian and Dutch have their own defaults (see the sidebar).
+Spanish, German, Portuguese, Italian and Dutch have their own defaults: tick the language under **Languages** in the sidebar to see them under **Voice commands**.
 
 Commands work in the language of the line you're on (not available for Japanese or Chinese). Change the phrases under **Voice commands** in the sidebar, and give a command several phrases by separating them with `/`. Start with a distinctive word: the first real word (not a tiny one like "이" or "on") must be heard clearly. If your script itself contains a command phrase, that phrase is switched off.
 

@@ -745,7 +745,7 @@ const DEFAULT_SETTINGS = {
   voiceCommands: {}, // Per-language phrases that replace the defaults, e.g. { fr: { top: '…' } }
 };
 
-const APP_VERSION = 'v0.7.10'; // Bump with every change — shown in the header and in debug logs
+const APP_VERSION = 'v0.7.11'; // Bump with every change — shown in the header and in debug logs
 
 // All supported languages for the selector
 const AVAILABLE_LANGS = [
@@ -1080,14 +1080,14 @@ function heardUnits(transcript) {
   return extractSyllables(numbersToWords(cleaned, currentRecogLang.slice(0, 2)));
 }
 
-// Manual jump (Go, PageUp/Down, bookmark, chapter, click on the prompter, voice command): everything heard before the jump
-// belongs to the old position. Mark it consumed — with 0, the old reading of the same lines was matched
-// again from the top and pushed the prompter ahead of the speaker.
 function recordPositionMove(heardEnd, weak) {
   positionHistory.push({ heardEnd, line: currentLineIndex, weak });
   if (positionHistory.length > 50) positionHistory.shift();
 }
 
+// Manual jump (Go, PageUp/Down, bookmark, chapter, click on the prompter, voice command): everything heard before the jump
+// belongs to the old position. Mark it consumed — with 0, the old reading of the same lines was matched
+// again from the top and pushed the prompter ahead of the speaker.
 function consumeHeardSoFar() {
   lastConsumedSylCount = lastTranscriptContent ? heardUnits(lastTranscriptContent).length : 0;
 }
@@ -2366,7 +2366,7 @@ function renderVoiceCommandSettings() {
   }).join('');
   const skipped = settings.scriptLangs.filter(l => !DEFAULT_VOICE_COMMANDS[l]);
   el.innerHTML = sections
-    + `<div class="voice-cmd-hint">Say one during a take to jump back. Several phrases: separate with /. Start with a distinctive word — it must be heard clearly. Empty = default.${skipped.length ? ' Not available for ' + skipped.map(l => AVAILABLE_LANGS.find(a => a.code === l)?.label).join(', ') + '.' : ''}</div>`;
+    + `<div class="voice-cmd-hint">Say one during a take to move around the script. Several phrases: separate with /. Start with a distinctive word — it must be heard clearly. Empty = default.${skipped.length ? ' Not available for ' + skipped.map(l => AVAILABLE_LANGS.find(a => a.code === l)?.label).join(', ') + '.' : ''}</div>`;
 }
 
 function voiceCommandWarning(lang, id) {
@@ -3145,15 +3145,26 @@ function initSpeechRecognition(lang) {
     return;
   }
 
-  // Replacing a running recognizer (language switch, watchdog): its late events are ignored
-  // below because it is no longer the current `recognition`
-  if (recognition) {
-    try { recognition.stop(); } catch {}
+  // Replacing a running recognizer (language switch, watchdog, voice command): its late events are
+  // ignored below because it is no longer the current `recognition`. Safari aborts a new recognizer
+  // started while the old one is still shutting down, so the new one starts once the old one has ended.
+  const old = recognition;
+  let oldEnded = !old;
+  const startWhenOldEnded = new Promise(resolve => {
+    if (!old) return resolve();
+    old.onend = () => { oldEnded = true; resolve(); };
+    setTimeout(resolve, 300); // Fallback: an old recognizer that never reports its end
+  });
+  if (old) {
+    try { old.stop(); } catch {}
   }
 
   const rec = new SpeechRecognition();
   recognition = rec;
-  positionHistory = []; // New transcript
+  // New recognizer = new transcript: nothing of it is consumed yet (a count left over from the last
+  // take, a pause or the old recognizer would skip the first syllables, or look like a Safari revision)
+  lastConsumedSylCount = 0;
+  positionHistory = [];
   rec.lang = lang;
   rec.continuous = true;
   rec.interimResults = true;
@@ -3257,13 +3268,18 @@ function initSpeechRecognition(lang) {
     }
   };
 
-  try {
-    rec.start();
-    startStaleWatchdog();
-    addDiagLine(`Speech recognition started (${lang})`, 'match');
-  } catch (err) {
-    addDiagLine('Failed to start recognition: ' + err.message, 'nomatch');
-  }
+  const startRec = () => {
+    if (rec !== recognition) return; // Replaced or stopped before it started
+    try {
+      rec.start();
+      startStaleWatchdog();
+      addDiagLine(`Speech recognition started (${lang})${old && !oldEnded ? ' — previous one slow to stop' : ''}`, 'match');
+    } catch (err) {
+      addDiagLine('Failed to start recognition: ' + err.message, 'nomatch');
+    }
+  };
+  if (old) startWhenOldEnded.then(startRec);
+  else startRec();
 }
 
 function stopSpeechRecognition() {
