@@ -676,7 +676,7 @@ dialog.help-modal::backdrop { background: rgba(0,0,0,0.6); }
 .voice-cmd-lang { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
 .voice-cmd-lang summary { cursor: pointer; padding: 2px 0; user-select: none; }
 .voice-cmd-row { display: flex; align-items: center; gap: 8px; padding: 2px 0; }
-.voice-cmd-row label { font-size: 12px; color: var(--text-muted); white-space: nowrap; width: 78px; flex-shrink: 0; }
+.voice-cmd-row label { font-size: 12px; color: var(--text-muted); white-space: nowrap; width: 84px; flex-shrink: 0; }
 .voice-cmd-row input { flex: 1; min-width: 0; padding: 4px 8px; background: var(--control-bg); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text); font-size: 12px; }
 .voice-cmd-row input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-glow); }
 .voice-cmd-warn { font-size: 10px; color: var(--orange); text-align: right; margin-top: -2px; }
@@ -745,7 +745,7 @@ const DEFAULT_SETTINGS = {
   voiceCommands: {}, // Per-language phrases that replace the defaults, e.g. { fr: { top: '…' } }
 };
 
-const APP_VERSION = 'v0.7.7'; // Bump with every change — shown in the header and in debug logs
+const APP_VERSION = 'v0.7.9'; // Bump with every change — shown in the header and in debug logs
 
 // All supported languages for the selector
 const AVAILABLE_LANGS = [
@@ -788,6 +788,9 @@ let currentAlignPos = 0;
 let currentWordIndex = 0; // Track current word position
 let currentRecogLang = 'ko-KR'; // Current recognition language
 let lastConsumedSylCount = 0; // Track consumed transcript syllables
+// Position moves in the current transcript: { heardEnd, line, weak }. A voice command undoes the moves
+// its own words (and a failed try just before) caused, so "this line" means the line you were on.
+let positionHistory = [];
 let lastMatchTime = Date.now();     // Last match OR forced advance (unstick/early switch) — paces unstick
 let lastRealMatchTime = Date.now(); // Last real match or re-anchor — drives the "stuck > 8s" relaxations
 let lastRealMatchWord = 0;          // Word of that real match — unstick/early-switch moves past it are provisional
@@ -1080,6 +1083,11 @@ function heardUnits(transcript) {
 // Manual jump (Go, PageUp/Down, bookmark, chapter, click on the prompter, voice command): everything heard before the jump
 // belongs to the old position. Mark it consumed — with 0, the old reading of the same lines was matched
 // again from the top and pushed the prompter ahead of the speaker.
+function recordPositionMove(heardEnd, weak) {
+  positionHistory.push({ heardEnd, line: currentLineIndex, weak });
+  if (positionHistory.length > 50) positionHistory.shift();
+}
+
 function consumeHeardSoFar() {
   lastConsumedSylCount = lastTranscriptContent ? heardUnits(lastTranscriptContent).length : 0;
 }
@@ -1094,20 +1102,23 @@ const VOICE_COMMAND_TYPES = [
   { id: 'top', label: 'restart from the top', ui: 'From the top' },
   { id: 'chapter', label: 'restart this chapter', ui: 'This chapter' },
   { id: 'line', label: 'restart this line', ui: 'This line' },
+  { id: 'prev', label: 'go to the previous line', ui: 'Previous line' },
+  { id: 'next', label: 'go to the next line', ui: 'Next line' },
 ];
 const DEFAULT_VOICE_COMMANDS = {
-  ko: { top: '처음부터 다시 해주세요 / 처음부터 다시 할게요', chapter: '챕터 다시 시작해주세요 / 챕터 다시 할게요', line: '이 문장 다시 할게요 / 문장 다시 해주세요' },
-  fr: { top: 'reprends depuis le début', chapter: 'reprends le chapitre', line: 'reprends la phrase' },
-  en: { top: 'restart from the top', chapter: 'restart this chapter', line: 'restart this line' },
-  es: { top: 'vuelve al principio', chapter: 'repite el capítulo', line: 'repite la frase' },
-  de: { top: 'nochmal von vorne bitte', chapter: 'kapitel nochmal bitte', line: 'satz nochmal bitte' },
-  pt: { top: 'volta ao início', chapter: 'repete o capítulo', line: 'repete a frase' },
-  it: { top: 'ricomincia da capo', chapter: 'ripeti il capitolo', line: 'ripeti la frase' },
-  nl: { top: 'opnieuw vanaf het begin', chapter: 'hoofdstuk opnieuw graag', line: 'zin opnieuw graag' },
+  ko: { top: '처음부터 다시 해주세요 / 처음부터 다시 할게요', chapter: '챕터 다시 시작해주세요 / 챕터 다시 할게요', line: '이 문장 다시 할게요 / 문장 다시 해주세요', prev: '이전 문장 할게요', next: '다음 문장 할게요' },
+  fr: { top: 'reprends depuis le début', chapter: 'reprends le chapitre', line: 'reprends la phrase', prev: 'phrase précédente', next: 'phrase suivante' },
+  en: { top: 'restart from the top', chapter: 'restart this chapter', line: 'restart this line', prev: 'previous line', next: 'next line' },
+  es: { top: 'vuelve al principio', chapter: 'repite el capítulo', line: 'repite la frase', prev: 'frase anterior', next: 'frase siguiente' },
+  de: { top: 'nochmal von vorne bitte', chapter: 'kapitel nochmal bitte', line: 'satz nochmal bitte', prev: 'vorheriger satz', next: 'nächster satz' },
+  pt: { top: 'volta ao início', chapter: 'repete o capítulo', line: 'repete a frase', prev: 'frase anterior', next: 'próxima frase' },
+  it: { top: 'ricomincia da capo', chapter: 'ripeti il capitolo', line: 'ripeti la frase', prev: 'frase precedente', next: 'frase successiva' },
+  nl: { top: 'opnieuw vanaf het begin', chapter: 'hoofdstuk opnieuw graag', line: 'zin opnieuw graag', prev: 'vorige zin', next: 'volgende zin' },
 };
 const VOICE_CMD_MIN_SCORE = 0.8; // Korean: share of the phrase's syllables heard, in order
 const VOICE_CMD_MIN_SCORE_LATIN = 0.9; // Letters match by chance more easily than syllables
 const VOICE_CMD_MIN_UNITS = 6; // Shorter phrases fire too easily
+const VOICE_CMD_PARTIAL_KEY_SCORE = 0.87; // Korean, key word one syllable off (0.85 let "이 문장 할게요" pass as 이전 문장)
 let disabledVoiceCommands = new Set(); // 'lang:id:phrase' — phrases that are in the script itself
 
 function getVoiceCommandText(lang, id) {
@@ -1145,8 +1156,19 @@ function voiceCommandScore(cmdUnits, units) {
   for (let i = 0; i < tail.length && keyBest < keyNeed; i++) {
     keyBest = Math.max(keyBest, lcsLength(key, tail.slice(i, i + key.length + 2)));
   }
-  if (keyBest < keyNeed) return 0;
-  return lcsLength(phrase, tail) / phrase.length;
+  const score = lcsLength(phrase, tail) / phrase.length;
+  if (keyBest >= keyNeed) return score;
+  // Short Korean key word with one syllable misheard (Safari: 문장 → 문제): accept only when the rest
+  // of the phrase is heard more clearly than usual
+  if (!cmdUnits.latin && key.length >= 2 && keyBest === keyNeed - 1 && score >= VOICE_CMD_PARTIAL_KEY_SCORE) return score;
+  return 0;
+}
+
+// Where the command starts in the heard units: the shortest end of the tail that holds the whole match
+function voiceCommandStart(cmdUnits, units) {
+  const tail = units.slice(-voiceCommandTailLength(cmdUnits));
+  const suffixLen = lcsMatchEnd([...cmdUnits.phrase].reverse(), [...tail].reverse());
+  return units.length - suffixLen;
 }
 
 // How much of the latest speech the phrase is looked for in (a little extra room for misheard bits)
@@ -1203,16 +1225,33 @@ function checkVoiceCommand(transcript) {
       if (disabledVoiceCommands.has(`${lang}:${type.id}:${phrase}`)) return;
       const cu = voiceCommandUnits(phrase, lang);
       const score = voiceCommandScore(cu, units);
-      if (score >= voiceCommandMinScore(cu) && (!best || score > best.score)) best = { cmd: type, score };
+      if (score >= voiceCommandMinScore(cu) && (!best || score > best.score)) best = { cmd: type, score, cu };
     });
   });
   if (!best) return false;
 
   addDiagLine(`VOICE COMMAND: ${best.cmd.label} (${Math.round(best.score * 100)}%)`, 'info');
+  // The line you were on before saying it: undo moves made by the command's words, and weak moves
+  // made just before it (a misheard first try of the command matching a word of the script)
+  const cmdStart = voiceCommandStart(best.cu, units);
+  let baseLine = currentLineIndex;
+  for (let k = positionHistory.length - 1; k >= 0; k--) {
+    const e = positionHistory[k];
+    const during = e.heardEnd > cmdStart;
+    const weakJustBefore = e.weak && e.heardEnd > cmdStart - 2 * best.cu.phrase.length;
+    if (!during && !weakJustBefore) break;
+    baseLine = e.line;
+  }
+  if (baseLine !== currentLineIndex) addDiagLine(`  position before the command: line ${baseLine} (was moved to line ${currentLineIndex} by the command's words)`, 'info');
   const before = recognition;
-  const target = best.cmd.id === 'top' ? 0
-    : best.cmd.id === 'chapter' ? findChapterStartLine(getCurrentChapterIndex())
-    : currentLineIndex;
+  const lastLine = Math.max(0, chapters.reduce((sum, ch) => sum + ch.lines.length, 0) - 1);
+  const target = {
+    top: 0,
+    chapter: findChapterStartLine(chapterIndexForLine(baseLine)),
+    line: baseLine,
+    prev: Math.max(0, baseLine - 1),
+    next: Math.min(lastLine, baseLine + 1),
+  }[best.cmd.id];
   jumpToLine(target);
   updateActiveChapter();
   recordLineTransition(target); // Captions: the line starts again from here
@@ -1428,7 +1467,7 @@ function findBestMatch(transcript, scriptSyls, currentPos, stuckMs) {
     // Consume up to the end of the matched heard slice, keeping a small overlap.
     // (After a Try-2 match, what was heard after it stays for the next result instead of being dropped.)
     lastConsumedSylCount = Math.max(lastConsumedSylCount, bestHeardEnd - MATCH_OVERLAP);
-    return { pos: endIdx + 1, wordIndex, lineIndex, confidence: bestScore, tryNum: bestTry };
+    return { pos: endIdx + 1, wordIndex, lineIndex, confidence: bestScore, tryNum: bestTry, heardEnd: bestHeardEnd };
   }
   return null;
 }
@@ -1498,6 +1537,7 @@ function initControlWindow() {
       currentWordIndex = findWordIndexForLine(msg.lineIndex);
       currentAlignPos = findSyllablePosForLine(msg.lineIndex);
       consumeHeardSoFar(); // Speech from before the click belongs to the old position
+      positionHistory = [];
       lastMatchTime = Date.now(); // Reset stuck timer on re-anchor
       markRealPosition();
       // Use highlightWord in voice mode so word dimming updates correctly
@@ -2167,6 +2207,7 @@ function jumpToLine(lineIndex) {
   currentWordIndex = findWordIndexForLine(lineIndex);
   currentAlignPos = findSyllablePosForLine(lineIndex);
   consumeHeardSoFar(); // Speech from before the jump belongs to the old position
+  positionHistory = [];
   lastMatchTime = Date.now();
   markRealPosition();
 
@@ -3103,6 +3144,7 @@ function initSpeechRecognition(lang) {
 
   const rec = new SpeechRecognition();
   recognition = rec;
+  positionHistory = []; // New transcript
   rec.lang = lang;
   rec.continuous = true;
   rec.interimResults = true;
@@ -3198,6 +3240,7 @@ function initSpeechRecognition(lang) {
       addDiagLine(`Recognition restarted (${currentRecogLang})`, '');
       lastConsumedSylCount = 0; // Reset — new recognition session starts fresh
       lastTranscriptContent = ''; // So a jump before its first result doesn't count the old session's text
+      positionHistory = [];
       setTimeout(() => {
         if (rec !== recognition || !isVoiceActive || !isStarted || isPaused) return;
         try { rec.start(); } catch (err) { addDiagLine('Recognition restart failed: ' + err.message, 'nomatch'); }
@@ -3317,6 +3360,7 @@ function processTranscription(transcript, isFinal) {
       captionTimeline.length = provisionalFrom;
       addDiagLine(`Pulled back to word ${match.wordIndex} (guessed position was ${currentWordIndex})`, 'info');
     }
+    recordPositionMove(match.heardEnd, match.confidence < 0.6 || match.tryNum > 1);
     currentAlignPos = match.pos;
     currentWordIndex = match.wordIndex;
     currentLineIndex = match.lineIndex;
@@ -3397,6 +3441,7 @@ function processTranscription(transcript, isFinal) {
       const advanceBy = 3;
       const nextWord = Math.min(currentWordIndex + advanceBy, scriptWords.length - 1);
       if (nextWord > currentWordIndex) {
+        recordPositionMove(allHeardSyls.length, true);
         currentWordIndex = nextWord;
         currentAlignPos = scriptWords[nextWord].sylStart;
         currentLineIndex = scriptWords[nextWord].lineIndex;
@@ -3736,11 +3781,15 @@ function handleKeyboard(e) {
 }
 
 function getCurrentChapterIndex() {
+  return chapterIndexForLine(currentLineIndex);
+}
+
+function chapterIndexForLine(lineIndex) {
   if (chapters.length === 0) return 0;
   let lineCount = 0;
   for (let i = 0; i < chapters.length; i++) {
     lineCount += chapters[i].lines.length;
-    if (lineCount > currentLineIndex) return i;
+    if (lineCount > lineIndex) return i;
   }
   return chapters.length - 1;
 }
