@@ -43,6 +43,23 @@ The app opens automatically in your browser. That's it!
 
 During a take the script editor is locked, and closing the teleprompter window only pauses the take. Presentation clickers and foot pedals that send **Page Down / Page Up** move one line forward / back.
 
+### Voice Commands
+
+Flubbed a take? Say a command instead of reaching for the keyboard:
+
+| Language | Restart from the top | Restart this chapter |
+|---|---|---|
+| Korean | 처음부터 다시 해주세요 | 챕터 다시 시작해주세요 |
+| French | reprends depuis le début | reprends le chapitre |
+| English | restart from the top | restart this chapter |
+| Spanish | vuelve al principio | repite el capítulo |
+| German | nochmal von vorne bitte | kapitel nochmal bitte |
+| Portuguese | volta ao início | repete o capítulo |
+| Italian | ricomincia da capo | ripeti il capitolo |
+| Dutch | opnieuw vanaf het begin | hoofdstuk opnieuw graag |
+
+Commands work in the language of the line you're on (not available for Japanese or Chinese). Change the phrases under **Voice commands** in the sidebar — start with a distinctive word, since the first word must be heard clearly. If your script itself contains a command phrase, that command is switched off.
+
 ### Multi-Language Support
 
 SyncPrompt automatically detects and switches between languages as you speak (Korean, English, French, and more). For best results:
