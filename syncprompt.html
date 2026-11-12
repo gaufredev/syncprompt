@@ -676,7 +676,7 @@ dialog.help-modal::backdrop { background: rgba(0,0,0,0.6); }
 .voice-cmd-lang { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
 .voice-cmd-lang summary { cursor: pointer; padding: 2px 0; user-select: none; }
 .voice-cmd-row { display: flex; align-items: center; gap: 8px; padding: 2px 0; }
-.voice-cmd-row label { font-size: 12px; color: var(--text-muted); white-space: nowrap; width: 84px; flex-shrink: 0; }
+.voice-cmd-row label { font-size: 12px; color: var(--text-muted); white-space: nowrap; width: 100px; flex-shrink: 0; }
 .voice-cmd-row input { flex: 1; min-width: 0; padding: 4px 8px; background: var(--control-bg); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text); font-size: 12px; }
 .voice-cmd-row input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-glow); }
 .voice-cmd-warn { font-size: 10px; color: var(--orange); text-align: right; margin-top: -2px; }
@@ -745,7 +745,7 @@ const DEFAULT_SETTINGS = {
   voiceCommands: {}, // Per-language phrases that replace the defaults, e.g. { fr: { top: '…' } }
 };
 
-const APP_VERSION = 'v0.7.9'; // Bump with every change — shown in the header and in debug logs
+const APP_VERSION = 'v0.7.10'; // Bump with every change — shown in the header and in debug logs
 
 // All supported languages for the selector
 const AVAILABLE_LANGS = [
@@ -1101,19 +1101,21 @@ function consumeHeardSoFar() {
 const VOICE_COMMAND_TYPES = [
   { id: 'top', label: 'restart from the top', ui: 'From the top' },
   { id: 'chapter', label: 'restart this chapter', ui: 'This chapter' },
+  { id: 'prevChapter', label: 'go to the previous chapter', ui: 'Previous chapter' },
+  { id: 'nextChapter', label: 'go to the next chapter', ui: 'Next chapter' },
   { id: 'line', label: 'restart this line', ui: 'This line' },
   { id: 'prev', label: 'go to the previous line', ui: 'Previous line' },
   { id: 'next', label: 'go to the next line', ui: 'Next line' },
 ];
 const DEFAULT_VOICE_COMMANDS = {
-  ko: { top: '처음부터 다시 해주세요 / 처음부터 다시 할게요', chapter: '챕터 다시 시작해주세요 / 챕터 다시 할게요', line: '이 문장 다시 할게요 / 문장 다시 해주세요', prev: '이전 문장 할게요', next: '다음 문장 할게요' },
-  fr: { top: 'reprends depuis le début', chapter: 'reprends le chapitre', line: 'reprends la phrase', prev: 'phrase précédente', next: 'phrase suivante' },
-  en: { top: 'restart from the top', chapter: 'restart this chapter', line: 'restart this line', prev: 'previous line', next: 'next line' },
-  es: { top: 'vuelve al principio', chapter: 'repite el capítulo', line: 'repite la frase', prev: 'frase anterior', next: 'frase siguiente' },
-  de: { top: 'nochmal von vorne bitte', chapter: 'kapitel nochmal bitte', line: 'satz nochmal bitte', prev: 'vorheriger satz', next: 'nächster satz' },
-  pt: { top: 'volta ao início', chapter: 'repete o capítulo', line: 'repete a frase', prev: 'frase anterior', next: 'próxima frase' },
-  it: { top: 'ricomincia da capo', chapter: 'ripeti il capitolo', line: 'ripeti la frase', prev: 'frase precedente', next: 'frase successiva' },
-  nl: { top: 'opnieuw vanaf het begin', chapter: 'hoofdstuk opnieuw graag', line: 'zin opnieuw graag', prev: 'vorige zin', next: 'volgende zin' },
+  ko: { top: '처음부터 다시 해주세요 / 처음부터 다시 할게요', chapter: '챕터 다시 시작해주세요 / 챕터 다시 할게요', line: '이 문장 다시 할게요 / 문장 다시 해주세요', prev: '이전 문장 할게요', next: '다음 문장 할게요', prevChapter: '이전 챕터 할게요', nextChapter: '다음 챕터 할게요' },
+  fr: { top: 'reprends depuis le début', chapter: 'reprends le chapitre', line: 'reprends la phrase', prev: 'phrase précédente', next: 'phrase suivante', prevChapter: 'chapitre précédent', nextChapter: 'chapitre suivant' },
+  en: { top: 'restart from the top', chapter: 'restart this chapter', line: 'restart this line', prev: 'previous line', next: 'next line', prevChapter: 'previous chapter', nextChapter: 'next chapter' },
+  es: { top: 'vuelve al principio', chapter: 'repite el capítulo', line: 'repite la frase', prev: 'frase anterior', next: 'frase siguiente', prevChapter: 'capítulo anterior', nextChapter: 'capítulo siguiente' },
+  de: { top: 'nochmal von vorne bitte', chapter: 'kapitel nochmal bitte', line: 'satz nochmal bitte', prev: 'vorheriger satz', next: 'nächster satz', prevChapter: 'vorheriges kapitel', nextChapter: 'nächstes kapitel' },
+  pt: { top: 'volta ao início', chapter: 'repete o capítulo', line: 'repete a frase', prev: 'frase anterior', next: 'próxima frase', prevChapter: 'capítulo anterior', nextChapter: 'próximo capítulo' },
+  it: { top: 'ricomincia da capo', chapter: 'ripeti il capitolo', line: 'ripeti la frase', prev: 'frase precedente', next: 'frase successiva', prevChapter: 'capitolo precedente', nextChapter: 'capitolo successivo' },
+  nl: { top: 'opnieuw vanaf het begin', chapter: 'hoofdstuk opnieuw graag', line: 'zin opnieuw graag', prev: 'vorige zin', next: 'volgende zin', prevChapter: 'vorig hoofdstuk', nextChapter: 'volgend hoofdstuk' },
 };
 const VOICE_CMD_MIN_SCORE = 0.8; // Korean: share of the phrase's syllables heard, in order
 const VOICE_CMD_MIN_SCORE_LATIN = 0.9; // Letters match by chance more easily than syllables
@@ -1245,16 +1247,23 @@ function checkVoiceCommand(transcript) {
   if (baseLine !== currentLineIndex) addDiagLine(`  position before the command: line ${baseLine} (was moved to line ${currentLineIndex} by the command's words)`, 'info');
   const before = recognition;
   const lastLine = Math.max(0, chapters.reduce((sum, ch) => sum + ch.lines.length, 0) - 1);
+  const chapterIdx = chapterIndexForLine(baseLine);
   const target = {
     top: 0,
-    chapter: findChapterStartLine(chapterIndexForLine(baseLine)),
+    chapter: findChapterStartLine(chapterIdx),
+    prevChapter: findChapterStartLine(Math.max(0, chapterIdx - 1)),
+    nextChapter: chapterIdx + 1 < chapters.length ? findChapterStartLine(chapterIdx + 1) : null,
     line: baseLine,
     prev: Math.max(0, baseLine - 1),
     next: Math.min(lastLine, baseLine + 1),
   }[best.cmd.id];
-  jumpToLine(target);
-  updateActiveChapter();
-  recordLineTransition(target); // Captions: the line starts again from here
+  if (target === null) {
+    addDiagLine('  no next chapter — staying here', 'info');
+  } else {
+    jumpToLine(target);
+    updateActiveChapter();
+    recordLineTransition(target); // Captions: the line starts again from here
+  }
   // Fresh recognizer (unless the jump already made one for a language change),
   // so the command's own words are neither matched nor heard as a command again
   if (recognition === before && isVoiceActive && isStarted) initSpeechRecognition(currentRecogLang);

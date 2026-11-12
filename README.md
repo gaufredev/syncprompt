@@ -51,6 +51,8 @@ Flubbed a take? Say a command instead of reaching for the keyboard:
 |---|---|---|---|
 | Restart from the top | 처음부터 다시 해주세요 / 처음부터 다시 할게요 | reprends depuis le début | restart from the top |
 | Restart this chapter | 챕터 다시 시작해주세요 / 챕터 다시 할게요 | reprends le chapitre | restart this chapter |
+| Previous chapter | 이전 챕터 할게요 | chapitre précédent | previous chapter |
+| Next chapter | 다음 챕터 할게요 | chapitre suivant | next chapter |
 | Restart this line | 이 문장 다시 할게요 / 문장 다시 해주세요 | reprends la phrase | restart this line |
 | Previous line | 이전 문장 할게요 | phrase précédente | previous line |
 | Next line | 다음 문장 할게요 | phrase suivante | next line |
